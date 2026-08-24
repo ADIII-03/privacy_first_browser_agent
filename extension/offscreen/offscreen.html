@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>PBA Offscreen</title>
+  </head>
+  <body>
+    <!--
+      Offscreen document: has access to a real canvas (for redaction compositing)
+      and to WebGPU (for the local vision model), while running off the visible
+      page's main thread. It never has DOM access to the user's page.
+    -->
+    <script src="../lib/protocol.js"></script>
+    <script src="../lib/privacy/pii-regex.js"></script>
+    <script src="../lib/redactor.js"></script>
+    <script src="../lib/vision/vision-neural.js"></script>
+    <script src="../lib/vision/vision-detector.js"></script>
+    <script src="offscreen.js"></script>
+  </body>
+</html>

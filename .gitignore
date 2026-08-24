@@ -1,0 +1,25 @@
+# --- Node / eval ---
+node_modules/
+eval/out_*.json
+eval/dataset/pii_samples.jsonl
+
+# --- Python / server ---
+__pycache__/
+*.py[cod]
+server/.venv/
+.venv/
+venv/
+
+# --- Vendored, large, or generated model assets (kept out of VCS) ---
+extension/lib/vendor/
+extension/models/
+*.onnx
+*.wasm.map
+
+# --- Editor / OS cruft ---
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+!.vscode/extensions.json

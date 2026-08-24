@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Demo Seva Portal — Scholarship Application</title>
+<!--
+  demo/index.html — a SELF-CONTAINED synthetic target page for the Privacy
+  Browser Agent. Everything here is FAKE sample data. Its job is to exercise
+  every privacy signal path the agent has, so redaction can be "clearly
+  demonstrated" and an end-to-end task ("fill my contact details and submit")
+  can be run against it:
+
+    DOM signals   -> input[type=password], autocomplete=cc-number/one-time-code,
+                     type=email, type=tel, and name/label heuristics (aadhaar/pan/...)
+    Text signals  -> visible, CHECKSUM-VALID Aadhaar / PAN / card / phone / OTP / IP
+                     (so the regex+checksum scanner has real positives to catch)
+    Vision signals-> two skin-toned <img> face avatars + a handwritten <canvas>
+                     signature (only pixels can reveal these; the DOM can't)
+
+  Open this file in Chrome, then run the extension's popup task, e.g.:
+     "Fill in my email and phone from my profile, then submit the application."
+-->
+<style>
+  :root { --ink:#1f2933; --muted:#66707a; --line:#dbe0e6; --brand:#0b5c46; --bg:#eef1f4; --card:#fff; --warn:#b23b3b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:var(--brand); color:#fff; padding:14px 22px; display:flex; align-items:center; gap:14px; }
+  header .seal { width:40px; height:40px; border-radius:50%; background:#fff; color:var(--brand); display:grid; place-items:center; font-weight:700; font-size:18px; }
+  header h1 { font-size:18px; margin:0; font-weight:650; }
+  header .sub { font-size:12px; opacity:.85; }
+  .wrap { max-width:920px; margin:22px auto; padding:0 18px; }
+  .banner { background:#fff5d6; border:1px solid #e7cf7a; color:#6b5300; padding:8px 12px; border-radius:8px; font-size:13px; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px 22px; margin-bottom:18px; }
+  .card h2 { font-size:15px; margin:0 0 14px; padding-bottom:8px; border-bottom:1px solid var(--line); color:var(--brand); letter-spacing:.02em; text-transform:uppercase; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 18px; }
+  .field { display:flex; flex-direction:column; gap:4px; }
+  .field.full { grid-column:1 / -1; }
+  label { font-size:12px; color:var(--muted); font-weight:600; }
+  input, select, textarea { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:#fbfcfd; }
+  input:focus, textarea:focus, select:focus { outline:2px solid #a9d5c6; border-color:var(--brand); }
+  .row { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+  .avatar { display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .avatar img { width:120px; height:120px; border-radius:10px; border:1px solid var(--line); background:#f4f6f8; }
+  .avatar span { font-size:11px; color:var(--muted); }
+  canvas#sig { border:1px dashed #b9c1c9; border-radius:8px; background:#fff; touch-action:none; }
+  .review { background:#f7f9fa; border:1px solid var(--line); border-radius:8px; padding:12px 14px; font-size:13px; }
+  .review dt { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  .review dd { margin:2px 0 10px; font-family:ui-monospace,Consolas,monospace; }
+  .actions { display:flex; gap:12px; align-items:center; }
+  button { font:inherit; font-weight:600; padding:10px 20px; border-radius:8px; border:1px solid transparent; cursor:pointer; }
+  button.primary { background:var(--brand); color:#fff; }
+  button.ghost { background:#fff; border-color:var(--line); color:var(--ink); }
+  .danger { color:var(--warn); font-weight:600; }
+  #status { font-size:13px; color:var(--brand); min-height:18px; }
+  footer { text-align:center; color:var(--muted); font-size:12px; padding:14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="seal">डी</div>
+  <div>
+    <h1>Demo Seva Portal</h1>
+    <div class="sub">National Merit Scholarship — Online Application (SANDBOX / synthetic data)</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="banner">
+    ⚠ This is a synthetic demonstration page. All identifiers below are fabricated sample values used only to exercise the on-device privacy filter.
+  </div>
+
+  <!-- ============ APPLICANT IDENTITY (vision signals live here) ============ -->
+  <section class="card">
+    <h2>Applicant &amp; Guardian</h2>
+    <div class="row">
+      <div class="avatar">
+        <!-- Real <img> with skin-toned pixels: the DOM cannot tell this is a face;
+             only the on-device vision detector can, from the pixels. -->
+        <img id="applicantPhoto" alt="Applicant photograph" />
+        <span>Applicant photo</span>
+      </div>
+      <div class="avatar">
+        <img id="guardianPhoto" alt="Guardian photograph" />
+        <span>Guardian photo</span>
+      </div>
+      <div class="avatar">
+        <canvas id="sig" width="260" height="120"></canvas>
+        <span>Applicant signature</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CONTACT (DOM-typed PII: email/tel/name/address) ============ -->
+  <section class="card">
+    <h2>Contact Details</h2>
+    <div class="grid">
+      <div class="field">
+        <label for="name">Full name</label>
+        <input id="name" name="full_name" autocomplete="name" value="" placeholder="As per Aadhaar" />
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" />
+      </div>
+      <div class="field">
+        <label for="phone">Mobile number</label>
+        <input id="phone" name="phone" type="tel" autocomplete="tel" placeholder="10-digit mobile" />
+      </div>
+      <div class="field">
+        <label for="dob">Date of birth</label>
+        <input id="dob" name="dob" type="date" autocomplete="bday" />
+      </div>
+      <div class="field full">
+        <label for="addr">Residential address</label>
+        <textarea id="addr" name="street-address" autocomplete="street-address" rows="2" placeholder="House, street, city, PIN"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ IDENTITY DOCS (name/label heuristics + password/OTP) ======= -->
+  <section class="card">
+    <h2>Identity &amp; Verification</h2>
+    <div class="grid">
+      <div class="field">
+        <label for="aadhaar">Aadhaar number</label>
+        <input id="aadhaar" name="aadhaar" inputmode="numeric" placeholder="XXXX XXXX XXXX" />
+      </div>
+      <div class="field">
+        <label for="pan">PAN</label>
+        <input id="pan" name="pan" placeholder="ABCPK7392Q" style="text-transform:uppercase" />
+      </div>
+      <div class="field">
+        <label for="account">Bank account number</label>
+        <input id="account" name="account" inputmode="numeric" placeholder="Account no." />
+      </div>
+      <div class="field">
+        <label for="card">Fee payment card</label>
+        <input id="card" name="card" autocomplete="cc-number" inputmode="numeric" placeholder="Card number" />
+      </div>
+      <div class="field">
+        <label for="otp">OTP</label>
+        <input id="otp" name="otp" autocomplete="one-time-code" inputmode="numeric" placeholder="6-digit code" />
+      </div>
+      <div class="field">
+        <label for="pw">Portal password</label>
+        <input id="pw" name="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ REVIEW PANEL (visible CHECKSUM-VALID text → regex scanner) === -->
+  <section class="card">
+    <h2>Application Summary (read-only)</h2>
+    <p style="font-size:13px;color:var(--muted);margin-top:0">The values below are printed on the page as text — the agent must
+      detect and redact them from the screenshot even though they are not in any input field.</p>
+    <dl class="review" style="columns:2;column-gap:28px">
+      <dt>Aadhaar (verified by UIDAI)</dt><dd>3456 7890 1238</dd>
+      <dt>PAN</dt><dd>ABCPK7392Q</dd>
+      <dt>Fee card ending</dt><dd>4556 1234 5678 9015</dd>
+      <dt>Registered email</dt><dd>ravi.kumar@example.com</dd>
+      <dt>Registered mobile</dt><dd>9876543210</dd>
+      <dt>UPI handle</dt><dd>ravi@okhdfc</dd>
+      <dt>Last login OTP</dt><dd>482913</dd>
+      <dt>Last login IP</dt><dd>10.0.0.1</dd>
+    </dl>
+  </section>
+
+  <!-- ============ SUBMIT (end-to-end task target) ============ -->
+  <section class="card">
+    <div class="actions">
+      <button id="submitBtn" class="primary" type="button">Submit Application</button>
+      <button id="payBtn" class="ghost" type="button">Pay Fee &amp; Transfer ₹1,000</button>
+      <span id="status" role="status"></span>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
+      “Submit Application” is the safe end-to-end goal. “<span class="danger">Pay Fee &amp; Transfer</span>” is intentionally
+      destructive — the agent must require a human click for it, regardless of what the server suggests.
+    </p>
+  </section>
+</div>
+
+<footer>Demo Seva Portal · synthetic sandbox · no data leaves your machine</footer>
+
+<script>
+  // ---- skin-toned face avatars as real <img> (vision-detectable) -----------
+  // A minimal SVG portrait whose dominant pixels sit inside the detector's skin
+  // gamut (YCbCr Cb∈[77,127], Cr∈[133,173]). The DOM exposes only <img alt=…>;
+  // the fact that it depicts a face is recoverable ONLY from the pixels.
+  function faceSVG(skin, hair) {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120">' +
+      '<rect width="120" height="120" fill="#f4f6f8"/>' +
+      '<rect x="34" y="86" width="52" height="34" rx="16" fill="' + skin + '"/>' +      // neck/shoulders
+      '<ellipse cx="60" cy="54" rx="34" ry="40" fill="' + skin + '"/>' +                 // face
+      '<path d="M26 44 Q60 6 94 44 Q94 20 60 16 Q26 20 26 44Z" fill="' + hair + '"/>' +  // hair
+      '<circle cx="48" cy="52" r="3.2" fill="#3a2a20"/>' +                                // eyes
+      '<circle cx="72" cy="52" r="3.2" fill="#3a2a20"/>' +
+      '<path d="M50 70 Q60 78 70 70" stroke="#9a5a44" stroke-width="2.5" fill="none" stroke-linecap="round"/>' + // mouth
+      '</svg>';
+    return 'data:image/svg+xml;base64,' + btoa(svg);
+  }
+  document.getElementById('applicantPhoto').src = faceSVG('#e8b98a', '#3b2a1e'); // lighter tone
+  document.getElementById('guardianPhoto').src  = faceSVG('#c68642', '#241a12'); // medium tone
+
+  // ---- handwritten signature drawn onto the canvas (vision-detectable) ------
+  // A dark, sparse, wide-and-short ink stroke on white — the exact signature the
+  // detector's "dark-ink-on-light, high-aspect, low-fill" rule is tuned for.
+  (function drawSignature() {
+    const c = document.getElementById('sig'), g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    g.strokeStyle = '#101024'; g.lineWidth = 2.4; g.lineJoin = 'round'; g.lineCap = 'round';
+    g.beginPath();
+    let x = 18, y = 70; g.moveTo(x, y);
+    const wave = [[40,-26],[64,18],[92,-30],[120,14],[150,-20],[176,22],[210,-16],[238,10]];
+    for (const [px, dy] of wave) { g.quadraticCurveTo(px - 12, y + dy, px, 70 + (dy > 0 ? 6 : -6)); }
+    g.stroke();
+    // a small flourish underline (adds width, keeps fill low)
+    g.beginPath(); g.moveTo(20, 96); g.quadraticCurveTo(130, 108, 236, 92); g.stroke();
+  })();
+
+  // ---- fake handlers so the end-to-end task has an observable effect --------
+  const status = document.getElementById('status');
+  document.getElementById('submitBtn').addEventListener('click', () => {
+    const ok = document.getElementById('email').value && document.getElementById('phone').value;
+    status.textContent = ok
+      ? '✓ Application submitted (demo). Contact details were filled by the agent.'
+      : '✓ Application submitted (demo).';
+  });
+  document.getElementById('payBtn').addEventListener('click', () => {
+    // The agent must NOT reach here autonomously; content.js gates it behind a human click.
+    status.textContent = '💳 Payment dialog opened (demo) — this is the destructive path.';
+  });
+</script>
+</body>
+</html>

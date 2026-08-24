@@ -1,0 +1,502 @@
+<title>The Redaction Boundary</title>
+<meta name="description" content="A before/after of the on-device privacy filter for browser agents." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+
+<style>
+  /* ---------- tokens: complete light palette on bare :root ---------- */
+  :root {
+    --paper:      #e9efec;
+    --surface:    #ffffff;
+    --surface-2:  #f4f7f5;
+    --ink:        #11211c;
+    --ink-soft:   #4c5b54;
+    --ink-faint:  #7c8a83;
+    --line:       #d5dfda;
+    --line-soft:  #e4ebe7;
+    --brand:      #0b5c46;
+    --brand-2:    #0e7a5c;
+    --on-brand:   #ffffff;
+    --alert:      #a83a24;
+    --alert-bg:   #f6e6e1;
+    --alert-line: #e0b3a7;
+    --redact:     #14181a;
+    --redact-txt: #6b7a74;
+    --shadow:     0 1px 2px rgba(17,33,28,.05), 0 10px 30px -12px rgba(17,33,28,.18);
+    --shadow-sm:  0 1px 2px rgba(17,33,28,.06);
+  }
+  /* system-dark (no explicit choice) — redefine ONLY tokens */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #0c1310;
+      --surface:    #14201b;
+      --surface-2:  #0f1814;
+      --ink:        #e7efea;
+      --ink-soft:   #a3b4ab;
+      --ink-faint:  #708078;
+      --line:       #24332c;
+      --line-soft:  #1b2620;
+      --brand:      #47c39d;
+      --brand-2:    #63d3af;
+      --on-brand:   #04231a;
+      --alert:      #e8896e;
+      --alert-bg:   #2a1712;
+      --alert-line: #5a3126;
+      --redact:     #05080a;
+      --redact-txt: #5d6d66;
+      --shadow:     0 1px 2px rgba(0,0,0,.4), 0 14px 34px -14px rgba(0,0,0,.6);
+      --shadow-sm:  0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  /* explicit dark choice — toggle wins either direction */
+  :root[data-theme="dark"] {
+    --paper:      #0c1310;
+    --surface:    #14201b;
+    --surface-2:  #0f1814;
+    --ink:        #e7efea;
+    --ink-soft:   #a3b4ab;
+    --ink-faint:  #708078;
+    --line:       #24332c;
+    --line-soft:  #1b2620;
+    --brand:      #47c39d;
+    --brand-2:    #63d3af;
+    --on-brand:   #04231a;
+    --alert:      #e8896e;
+    --alert-bg:   #2a1712;
+    --alert-line: #5a3126;
+    --redact:     #05080a;
+    --redact-txt: #5d6d66;
+    --shadow:     0 1px 2px rgba(0,0,0,.4), 0 14px 34px -14px rgba(0,0,0,.6);
+    --shadow-sm:  0 1px 2px rgba(0,0,0,.4);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Public Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- typography ---------- */
+  h1, h2, h3 { font-family: "Fraunces", Georgia, "Times New Roman", serif; font-weight: 600; line-height: 1.08; text-wrap: balance; margin: 0; }
+  .eyebrow {
+    font-size: .72rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--brand); margin: 0 0 .6rem;
+  }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+  /* ---------- top bar ---------- */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 20px 0 8px; }
+  .brandmark { display: flex; align-items: center; gap: 11px; font-weight: 700; letter-spacing: .01em; }
+  .brandmark .glyph {
+    width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+    background: var(--brand); color: var(--on-brand); font-family: "Fraunces", serif; font-weight: 700; font-size: 17px;
+  }
+  .theme-btn {
+    font: inherit; font-size: .82rem; font-weight: 600; color: var(--ink-soft);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+  }
+  .theme-btn:hover { border-color: var(--brand); color: var(--brand); }
+  .theme-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 34px 0 12px; max-width: 760px; }
+  .hero h1 { font-size: clamp(2.3rem, 5.4vw, 3.7rem); letter-spacing: -.015em; }
+  .hero h1 em { font-style: italic; color: var(--brand); }
+  .hero p { font-size: 1.19rem; color: var(--ink-soft); margin: 1rem 0 0; max-width: 60ch; }
+  .trust-line {
+    display: inline-flex; align-items: center; gap: 10px; margin-top: 22px;
+    font-size: .86rem; color: var(--ink-soft); background: var(--surface); border: 1px solid var(--line);
+    border-radius: 999px; padding: 8px 16px 8px 12px; box-shadow: var(--shadow-sm);
+  }
+  .trust-line b { color: var(--ink); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); flex: none; }
+
+  /* ---------- diptych ---------- */
+  section { padding: 26px 0; }
+  .diptych-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .diptych-head h2 { font-size: 1.65rem; }
+  .replay {
+    font: inherit; font-size: .82rem; font-weight: 600; color: var(--on-brand);
+    background: var(--brand); border: 1px solid transparent; border-radius: 999px;
+    padding: 8px 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  }
+  .replay:hover { background: var(--brand-2); }
+  .replay:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  .diptych {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: stretch; gap: 0;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .panel { padding: 22px; min-width: 0; }
+  .panel--after { background: var(--surface-2); }
+  .panel-tag { display: flex; align-items: center; gap: 9px; margin-bottom: 4px; }
+  .panel-tag .pip { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .panel--before .pip { background: var(--alert); }
+  .panel--after .pip { background: var(--brand); }
+  .panel-tag .t { font-size: .72rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  .panel--before .t { color: var(--alert); }
+  .panel--after .t { color: var(--brand); }
+  .panel h3 { font-size: 1.18rem; margin-bottom: 3px; }
+  .panel .cap { font-size: .84rem; color: var(--ink-faint); margin: 0 0 18px; }
+
+  /* trust boundary gutter */
+  .boundary { position: relative; width: 58px; display: grid; place-items: center; }
+  .boundary::before {
+    content: ""; position: absolute; top: 14px; bottom: 14px; left: 50%; width: 0;
+    border-left: 2px dashed var(--line); transform: translateX(-50%);
+  }
+  .boundary .lbl {
+    position: relative; writing-mode: vertical-rl; transform: rotate(180deg);
+    font-size: .64rem; font-weight: 700; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--ink-faint); background: var(--surface); padding: 12px 3px; border-radius: 6px;
+  }
+  .panel--after + .boundary .lbl, .boundary .lbl { background: linear-gradient(var(--surface), var(--surface-2)); }
+
+  /* ---------- mock form ---------- */
+  .mock { display: flex; flex-direction: column; gap: 13px; }
+  .avatars { display: flex; gap: 14px; flex-wrap: wrap; }
+  .media { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); }
+  .media svg, .media img { display: block; }
+  .media .who { position: absolute; left: 0; right: 0; bottom: 0; font-size: .62rem; text-align: center; padding: 3px 2px; background: color-mix(in srgb, var(--surface) 78%, transparent); color: var(--ink-faint); }
+
+  .field { position: relative; }
+  .field > label { display: block; font-size: .68rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 4px; }
+  .control {
+    position: relative; border: 1px solid var(--line); border-radius: 9px; background: var(--surface);
+    padding: 9px 12px; min-height: 40px; display: flex; align-items: center; font-size: .95rem;
+  }
+  .panel--after .control { background: var(--surface); }
+  .val-raw { color: var(--ink); }
+  .val-raw.pii { background: var(--alert-bg); box-shadow: 0 0 0 1px var(--alert-line) inset; border-radius: 5px; padding: 1px 7px; color: color-mix(in srgb, var(--ink) 78%, var(--alert)); }
+  .token { color: var(--brand-2); font-weight: 500; }
+  .val-empty { color: var(--ink-faint); font-style: italic; }
+
+  /* redaction bar (BLACKOUT) */
+  .blackout {
+    position: absolute; inset: 0; background: var(--redact); border-radius: inherit;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    transform: scaleX(0); transform-origin: left center; z-index: 3;
+    border: 1px solid color-mix(in srgb, var(--redact) 60%, var(--line));
+  }
+  .media .blackout { border-radius: 10px; }
+  .blackout .rtxt { font-family: "IBM Plex Mono", monospace; font-size: .64rem; letter-spacing: .12em; color: var(--redact-txt); text-transform: uppercase; opacity: 0; }
+  .playing .blackout { transform: scaleX(1); transition: transform .5s cubic-bezier(.22,.61,.36,1); }
+  .playing .blackout .rtxt { opacity: 1; transition: opacity .3s ease .38s; }
+
+  /* Set-of-Marks badge */
+  .mark {
+    position: absolute; top: -9px; left: -9px; z-index: 5; min-width: 20px; height: 20px; padding: 0 5px;
+    border-radius: 6px; background: var(--brand); color: var(--on-brand);
+    font-family: "IBM Plex Mono", monospace; font-size: .68rem; font-weight: 600; line-height: 20px; text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,.25); transform: scale(0); transform-origin: center;
+  }
+  .playing .mark { transform: scale(1); transition: transform .32s cubic-bezier(.34,1.56,.64,1) var(--md, .5s); }
+  .btnrow { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 3px; }
+  .fbtn { position: relative; border-radius: 9px; padding: 10px 16px; font-size: .9rem; font-weight: 600; border: 1px solid transparent; }
+  .fbtn.primary { background: var(--brand); color: var(--on-brand); }
+  .fbtn.ghost { background: var(--surface); border-color: var(--line); color: var(--ink); }
+  .fbtn .flag { position: absolute; top: -9px; right: -8px; font-size: .58rem; font-weight: 700; letter-spacing: .06em; background: var(--alert); color: #fff; padding: 2px 6px; border-radius: 6px; text-transform: uppercase; }
+
+  .noscript { padding: 16px; border: 1px dashed var(--line); border-radius: 10px; color: var(--ink-soft); }
+
+  /* ---------- pipeline ---------- */
+  .pipe { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .stage { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 16px; box-shadow: var(--shadow-sm); }
+  .stage .n { font-family: "IBM Plex Mono", monospace; font-size: .72rem; color: var(--brand); font-weight: 600; }
+  .stage h4 { font-family: "Fraunces", serif; font-weight: 600; font-size: 1.12rem; margin: 6px 0 6px; }
+  .stage p { margin: 0; font-size: .86rem; color: var(--ink-soft); }
+  .stage .arrow { position: absolute; right: -11px; top: 50%; transform: translateY(-50%); color: var(--line); z-index: 2; }
+  .stage:last-child .arrow { display: none; }
+
+  /* ---------- receipt + metrics ---------- */
+  .grid2 { display: grid; grid-template-columns: 1.05fr .95fr; gap: 22px; align-items: start; }
+  .receipt {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+    overflow: hidden; font-family: "IBM Plex Mono", monospace;
+  }
+  .receipt .rhead { padding: 14px 18px; border-bottom: 1px dashed var(--line); display: flex; align-items: center; justify-content: space-between; }
+  .receipt .rhead .title { font-weight: 600; font-size: .82rem; letter-spacing: .04em; color: var(--ink); }
+  .receipt .rhead .badge { font-size: .68rem; font-weight: 600; color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, transparent); padding: 3px 9px; border-radius: 999px; }
+  .receipt .rows { padding: 6px 18px 16px; }
+  .rrow { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; font-size: .82rem; border-bottom: 1px solid var(--line-soft); }
+  .rrow:last-child { border-bottom: 0; }
+  .rrow .k { color: var(--ink-soft); }
+  .rrow .v { color: var(--ink); font-weight: 500; }
+  .rrow .v.good { color: var(--brand-2); }
+  .cats { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 18px 18px; border-top: 1px dashed var(--line); }
+  .chip { font-size: .72rem; padding: 3px 9px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-soft); }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  .metrics { display: flex; flex-direction: column; gap: 12px; }
+  .metric { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow-sm); display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+  .metric .lab { font-size: .84rem; color: var(--ink-soft); max-width: 24ch; }
+  .metric .num { font-family: "Fraunces", serif; font-weight: 700; font-size: 1.9rem; color: var(--ink); letter-spacing: -.01em; line-height: 1; }
+  .metric .num small { font-size: .8rem; color: var(--ink-faint); font-family: "IBM Plex Mono", monospace; font-weight: 500; display: block; margin-top: 4px; letter-spacing: 0; }
+
+  .note { font-size: .82rem; color: var(--ink-faint); margin-top: 14px; max-width: 70ch; }
+  footer { border-top: 1px solid var(--line); margin-top: 20px; padding: 22px 0 40px; color: var(--ink-faint); font-size: .82rem; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  a { color: var(--brand-2); }
+
+  @media (max-width: 860px) {
+    .diptych { grid-template-columns: 1fr; }
+    .boundary { width: auto; height: 46px; }
+    .boundary::before { top: 50%; bottom: auto; left: 14px; right: 14px; width: auto; height: 0; border-left: 0; border-top: 2px dashed var(--line); transform: translateY(-50%); }
+    .boundary .lbl { writing-mode: horizontal-tb; transform: none; padding: 4px 12px; }
+    .pipe { grid-template-columns: 1fr 1fr; }
+    .stage .arrow { display: none; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 520px) { .pipe { grid-template-columns: 1fr; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .blackout { transform: scaleX(1); transition: none; }
+    .blackout .rtxt { opacity: 1; }
+    .mark { transform: scale(1); transition: none; }
+  }
+</style>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brandmark"><span class="glyph">P</span> Privacy Browser Agent</div>
+    <button class="theme-btn" id="themeBtn" aria-label="Toggle color theme">◐ Theme</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">On-device visual perception · SIH 26171</p>
+    <h1>Everything sensitive is caught <em>before</em> the boundary.</h1>
+    <p>A browser agent needs to see the page to help you fill it in. This one detects faces, signatures, and
+      identifiers <strong>on your device</strong> and redacts them, so the reasoning server receives a map of the
+      page — never your identity.</p>
+    <span class="trust-line"><span class="dot"></span> <b>Raw PII never crosses.</b> Detect → fuse → decide → redact, all in the browser.</span>
+  </header>
+</div>
+
+<div class="wrap">
+  <section>
+    <div class="diptych-head">
+      <div>
+        <p class="eyebrow" style="margin-bottom:.3rem">The same form, two views</p>
+        <h2>What you see · what the server receives</h2>
+      </div>
+      <button class="replay" id="replayBtn">▶ Replay redaction</button>
+    </div>
+
+    <div class="diptych" id="diptych">
+      <div class="panel panel--before">
+        <div class="panel-tag"><span class="pip"></span><span class="t">On your device</span></div>
+        <h3>Rendered page</h3>
+        <p class="cap">Faces, a signature, and checksum-valid identifiers — fully visible.</p>
+        <div class="mock" id="mockBefore"></div>
+      </div>
+
+      <div class="boundary"><span class="lbl">Trust boundary</span></div>
+
+      <div class="panel panel--after">
+        <div class="panel-tag"><span class="pip"></span><span class="t">Across the boundary</span></div>
+        <h3>Sanitized context</h3>
+        <p class="cap">Blackout on pixels, tokens on text, numbered marks for grounding.</p>
+        <div class="mock" id="mockAfter"></div>
+      </div>
+    </div>
+    <p class="note">Illustrative composite of <span class="mono">demo/index.html</span>. Identifiers shown are fabricated
+      but genuinely checksum-valid (Verhoeff / Luhn), so the shipped detector treats them as real. Faces and the
+      signature are recoverable only from pixels — the DOM cannot see them, which is why an on-device vision model is required.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">Four stages, all on-device</p>
+    <h2 style="font-size:1.65rem; margin-bottom:16px;">The pipeline</h2>
+    <div class="pipe">
+      <div class="stage">
+        <div class="n">01</div><h4>Detect</h4>
+        <p>DOM semantics, checksum-validated text scan, and a WebGPU/CPU vision detector for faces &amp; signatures.</p>
+        <svg class="arrow" width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M3 11h15m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="stage">
+        <div class="n">02</div><h4>Fuse</h4>
+        <p>Union-biased merge of the three signals (noisy-OR, IoU). Two weak hints for one region become one strong one.</p>
+        <svg class="arrow" width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M3 11h15m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="stage">
+        <div class="n">03</div><h4>Decide</h4>
+        <p>Fail-closed policy: faces &amp; signatures → blackout, text → tokenize. When uncertain, redact.</p>
+        <svg class="arrow" width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M3 11h15m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="stage">
+        <div class="n">04</div><h4>Redact</h4>
+        <p>Compose the masked screenshot, tokenize labels, draw Set-of-Marks, and emit an auditable receipt.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="grid2">
+      <div>
+        <p class="eyebrow">Auditable by design</p>
+        <h2 style="font-size:1.65rem; margin-bottom:14px;">The privacy receipt</h2>
+        <div class="receipt" role="table" aria-label="Privacy receipt">
+          <div class="rhead"><span class="title">SANITIZED_CONTEXT · receipt</span><span class="badge">residual risk: minimal</span></div>
+          <div class="rows">
+            <div class="rrow"><span class="k">regions detected</span><span class="v">10</span></div>
+            <div class="rrow"><span class="k">regions redacted</span><span class="v good">10 / 10</span></div>
+            <div class="rrow"><span class="k">screenshot transmitted</span><span class="v good">yes · redacted</span></div>
+            <div class="rrow"><span class="k">raw values in payload</span><span class="v good">0</span></div>
+            <div class="rrow"><span class="k">url sent</span><span class="v">origin only</span></div>
+          </div>
+          <div class="cats">
+            <span class="chip">face <b>2</b></span>
+            <span class="chip">signature <b>1</b></span>
+            <span class="chip">aadhaar <b>1</b></span>
+            <span class="chip">pan <b>1</b></span>
+            <span class="chip">credit_card <b>1</b></span>
+            <span class="chip">email <b>1</b></span>
+            <span class="chip">phone <b>1</b></span>
+            <span class="chip">otp <b>1</b></span>
+            <span class="chip">password <b>1</b></span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="eyebrow">Scored on the shipped code</p>
+        <h2 style="font-size:1.65rem; margin-bottom:14px;">Measured</h2>
+        <div class="metrics">
+          <div class="metric"><span class="lab">Visual context accuracy — micro-F1<small>recall 1.00 · mean IoU 0.93 · 11 scenes</small></span><span class="num">0.95</span></div>
+          <div class="metric"><span class="lab">PII detection F1<small>precision 0.99 · recall 1.00</small></span><span class="num">0.99</span></div>
+          <div class="metric"><span class="lab">Redaction coverage-recall<small>box precision 1.00 · IoU 0.70</small></span><span class="num">1.00</span></div>
+        </div>
+        <p class="note">Recall is treated as a safety property: a missed region is a leak, not just a metric dip.
+          The only precision cost on signatures comes from over-redaction — the safe direction.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Privacy Browser Agent · the browser is the gatekeeper.</span>
+    <span class="mono">detect → fuse → decide → redact</span>
+  </div>
+</footer>
+
+<noscript><div class="wrap"><p class="noscript">This before/after visual builds its two panels with JavaScript. With scripting disabled, see <span class="mono">demo/index.html</span> and <span class="mono">REDACTION_VISUAL.md</span> in the repository.</p></div></noscript>
+
+<script>
+  // ---- theme toggle (respects the three-state model) ----
+  const root = document.documentElement, tbtn = document.getElementById("themeBtn");
+  tbtn.addEventListener("click", () => {
+    const cur = root.getAttribute("data-theme");
+    const sysDark = matchMedia("(prefers-color-scheme: dark)").matches;
+    const isDark = cur ? cur === "dark" : sysDark;
+    root.setAttribute("data-theme", isDark ? "light" : "dark");
+  });
+
+  // ---- skin-toned face + signature as inline SVG (vision-detectable pixels) ----
+  function faceSVG(skin, hair) {
+    return '<svg width="88" height="92" viewBox="0 0 88 92" xmlns="http://www.w3.org/2000/svg">' +
+      '<rect width="88" height="92" fill="none"/>' +
+      '<rect x="24" y="66" width="40" height="26" rx="13" fill="' + skin + '"/>' +
+      '<ellipse cx="44" cy="42" rx="25" ry="29" fill="' + skin + '"/>' +
+      '<path d="M19 34 Q44 2 69 34 Q69 14 44 11 Q19 14 19 34Z" fill="' + hair + '"/>' +
+      '<circle cx="35" cy="41" r="2.6" fill="#3a2a20"/><circle cx="53" cy="41" r="2.6" fill="#3a2a20"/>' +
+      '<path d="M37 54 Q44 60 51 54" stroke="#9a5a44" stroke-width="2" fill="none" stroke-linecap="round"/></svg>';
+  }
+  function sigSVG() {
+    return '<svg width="150" height="60" viewBox="0 0 150 60" xmlns="http://www.w3.org/2000/svg">' +
+      '<rect width="150" height="60" fill="#ffffff"/>' +
+      '<path d="M12 38 Q24 12 34 34 Q44 56 56 26 Q66 6 78 36 Q88 58 100 28 Q110 10 122 34 Q130 48 140 30" ' +
+      'stroke="#101024" stroke-width="2.4" fill="none" stroke-linecap="round"/>' +
+      '<path d="M14 50 Q75 60 138 46" stroke="#101024" stroke-width="1.6" fill="none"/></svg>';
+  }
+
+  // ---- one spec, rendered into both panels → guaranteed before/after parity ----
+  const MEDIA = [
+    { kind: "face", who: "Applicant", svg: faceSVG("#e8b98a", "#3b2a1e"), rtxt: "FACE", w: 88, h: 92 },
+    { kind: "face", who: "Guardian",  svg: faceSVG("#c68642", "#241a12"), rtxt: "FACE", w: 88, h: 92 },
+    { kind: "sig",  who: "Signature", svg: sigSVG(), rtxt: "SIGNATURE", w: 150, h: 60 },
+  ];
+  // op: "token" = TOKENIZE (text), "blackout" = BLACKOUT (opaque bar), null = passthrough
+  const FIELDS = [
+    { label: "Full name",   raw: "Ravi Kumar",              op: "token",    token: "‹name_1›",    mark: true },
+    { label: "Email",       raw: "ravi.kumar@example.com",  op: "token",    token: "‹email_1›",   mark: true },
+    { label: "Mobile",      raw: "9876543210",              op: "token",    token: "‹phone_1›",   mark: true },
+    { label: "Aadhaar",     raw: "3456 7890 1238",          op: "token",    token: "‹aadhaar_1›", mark: true },
+    { label: "PAN",         raw: "ABCPK7392Q",              op: "token",    token: "‹pan_1›",     mark: true },
+    { label: "Fee card",    raw: "4556 1234 5678 9015",     op: "token",    token: "‹card_1›",    mark: true },
+    { label: "OTP",         raw: "482913",                  op: "token",    token: "‹otp_1›",     mark: true },
+    { label: "Password",    raw: "••••••••", op: "blackout", rtxt: "REDACTED", mark: true },
+  ];
+
+  function mediaEl(m, after) {
+    const wrap = document.createElement("div");
+    wrap.className = "media"; wrap.style.width = m.w + "px"; wrap.style.height = m.h + "px";
+    wrap.innerHTML = m.svg + '<span class="who">' + m.who + "</span>";
+    if (after) {
+      const b = document.createElement("div"); b.className = "blackout";
+      b.innerHTML = '<span class="rtxt">' + m.rtxt + "</span>";
+      wrap.appendChild(b);
+    }
+    return wrap;
+  }
+  function fieldEl(f, after, markNo) {
+    const field = document.createElement("div"); field.className = "field";
+    const lab = document.createElement("label"); lab.textContent = f.label; field.appendChild(lab);
+    const ctl = document.createElement("div"); ctl.className = "control";
+    if (after && f.op === "token") {
+      ctl.innerHTML = '<span class="mono token">' + f.token + "</span>";
+    } else if (f.op === "blackout") {
+      ctl.innerHTML = '<span class="val-raw">' + f.raw + "</span>";
+      if (after) { const b = document.createElement("div"); b.className = "blackout";
+        b.innerHTML = '<span class="rtxt">' + f.rtxt + "</span>"; ctl.appendChild(b); }
+    } else {
+      ctl.innerHTML = '<span class="val-raw' + (f.op ? " pii" : "") + '">' + f.raw + "</span>";
+    }
+    if (after && f.mark) { const mk = document.createElement("span"); mk.className = "mark";
+      mk.textContent = markNo; mk.style.setProperty("--md", (0.5 + markNo * 0.05) + "s"); ctl.appendChild(mk); }
+    field.appendChild(ctl);
+    return field;
+  }
+
+  function render(target, after) {
+    const host = document.getElementById(target);
+    host.innerHTML = "";
+    const av = document.createElement("div"); av.className = "avatars";
+    MEDIA.forEach((m) => av.appendChild(mediaEl(m, after)));
+    host.appendChild(av);
+    let mark = 0;
+    FIELDS.forEach((f) => host.appendChild(fieldEl(f, after, mark++)));
+    // buttons (interactive → get marks in the after view)
+    const row = document.createElement("div"); row.className = "btnrow";
+    const b1 = document.createElement("div"); b1.className = "fbtn primary"; b1.textContent = "Submit";
+    const b2 = document.createElement("div"); b2.className = "fbtn ghost"; b2.textContent = "Pay & Transfer";
+    if (after) {
+      [b1, b2].forEach((b) => { const mk = document.createElement("span"); mk.className = "mark";
+        mk.textContent = mark; mk.style.setProperty("--md", (0.5 + mark * 0.05) + "s"); b.appendChild(mk); mark++; });
+    }
+    const flag = document.createElement("span"); flag.className = "flag"; flag.textContent = "human-only"; b2.appendChild(flag);
+    row.appendChild(b1); row.appendChild(b2); host.appendChild(row);
+  }
+
+  render("mockBefore", false);
+  render("mockAfter", true);
+
+  // ---- orchestrated reveal ----
+  const dip = document.getElementById("diptych");
+  function play() { dip.classList.remove("playing"); void dip.offsetWidth; dip.classList.add("playing"); }
+  document.getElementById("replayBtn").addEventListener("click", play);
+  // autoplay shortly after load (reduced-motion users see the end state immediately via CSS)
+  setTimeout(play, 450);
+</script>

@@ -1,0 +1,12 @@
+/* overlay.css — styles for in-page agent affordances (confirmation banner, marks). */
+.pba-confirm {
+  position: fixed; z-index: 2147483647; top: 16px; right: 16px;
+  max-width: 320px; padding: 14px 16px; border-radius: 12px;
+  background: #fff; color: #111827; font: 13px/1.4 system-ui, sans-serif;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25); border: 1px solid #fecaca;
+}
+.pba-confirm h4 { margin: 0 0 6px; color: #b91c1c; font-size: 13px; }
+.pba-confirm .row { display: flex; gap: 8px; margin-top: 10px; }
+.pba-confirm button { flex: 1; padding: 7px 10px; border-radius: 8px; border: 0; cursor: pointer; font-weight: 600; }
+.pba-confirm .allow { background: #dc2626; color: #fff; }
+.pba-confirm .deny { background: #e5e7eb; color: #111827; }

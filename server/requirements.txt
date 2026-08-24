@@ -1,0 +1,7 @@
+# Reasoning server — core (mock backend runs with just these)
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+
+# Optional: real VLM backend (PBA_BACKEND=vlm) via any OpenAI-compatible server
+# openai>=1.30
