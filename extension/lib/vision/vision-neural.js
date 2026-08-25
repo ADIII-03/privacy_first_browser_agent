@@ -2,8 +2,10 @@
  * vision-neural.js — OPTIONAL neural detector hook (transformers.js / ONNX Runtime Web).
  *
  * The built-in classical detector (vision-detector.js) is always active and needs
- * zero downloads. This module ADDS a neural detector when you vendor a model — it
- * augments (unions with) the built-in detections, it does not replace them.
+ * zero downloads. This module ADDS a neural detector when weights are vendored —
+ * it AUGMENTS (unions with) the built-in detections, it never replaces them.
+ * Union-biased fusion + fail-closed policy means a neural false positive only
+ * costs over-redaction, while the classical core guarantees baseline coverage.
  *
  * It is a no-op until vendored: init() sets `available:false` if the transformers.js
  * bundle isn't present, and vision-detector.js simply skips it. Nothing here runs,
@@ -12,44 +14,57 @@
  * ── WHY IT MUST BE VENDORED ────────────────────────────────────────────────
  * The extension CSP is `script-src 'self' 'wasm-unsafe-eval'` (see manifest.json):
  * loading a library or weights from a CDN at runtime is forbidden by design — that
- * is the whole privacy point. So the library, its WASM, and the model weights must
- * be packaged INSIDE the extension and loaded same-origin.
+ * is the whole privacy point. Vendor everything with ONE command:
  *
- * ── VENDORING (one-time, offline afterwards) ───────────────────────────────
- *  1. npm i @huggingface/transformers  (or download a release build)
- *  2. Copy the ESM bundle to:            extension/lib/vendor/transformers/transformers.min.js
- *  3. Copy its ONNX Runtime WASM to:     extension/lib/vendor/ort/*.wasm
- *  4. Download a quantized detector to:  extension/models/<model-id>/...
- *       • Faces:  a BlazeFace / MediaPipe face-detection ONNX (~1–2 MB), or
- *       • General object detection: Xenova/yolos-tiny (int8) — 'person' boxes
- *  5. All of extension/models/ and extension/lib/vendor/ are same-origin to the
- *     offscreen document, so they load under `'self'`. (models/* is already listed
- *     in web_accessible_resources.)
+ *     node tools/vendor-vision.mjs
  *
- * The adapter keeps output in IMAGE (device) pixels — the same space as the
- * built-in core — so vision-detector.js can merge then convert to CSS px once.
+ * which populates (all .gitignore'd, packaged same-origin at load time):
+ *   lib/vendor/transformers/transformers.min.js   (ESM bundle)
+ *   lib/vendor/ort/*.wasm *.mjs                   (ONNX Runtime Web backends)
+ *   models/<model-id>/...                         (quantized weights)
+ *
+ * ── MODEL REGISTRY ─────────────────────────────────────────────────────────
+ * ACTIVE_MODEL selects from REGISTRY below. The default ships today; to swap in
+ * a dedicated face detector later (e.g. a BlazeFace/YOLOv8-face ONNX converted
+ * for transformers.js), add an entry and flip ACTIVE_MODEL — no other code
+ * changes. See docs/VENDORING.md for the conversion recipe.
+ *
+ * Output stays in IMAGE (device) pixels — the same space as the built-in core —
+ * so vision-detector.js merges then converts to CSS px once.
  */
 (function () {
   const G = (typeof globalThis !== "undefined") ? globalThis : this;
   G.PBA = G.PBA || {};
-  const PII = (G.PBA.PII) || { FACE: "face", SIGNATURE: "signature", PERSON: "person" };
-
-  // Map a model's class labels → our PII categories. Anything not listed is ignored.
-  // A dedicated face model is preferable; with a generic object detector, 'person'
-  // boxes are treated as a coarse person/face region (still redacted, fail-closed).
-  const LABEL_MAP = {
-    face: PII.FACE,
-    person: PII.FACE,
-    signature: PII.SIGNATURE,
-    handwriting: PII.SIGNATURE,
+  const PII = (G.PBA.PII) || {
+    FACE: "face", SIGNATURE: "signature", PERSON: "person", ID_DOCUMENT: "id_document",
   };
 
-  const MIN_SCORE = 0.5;
-  const MODEL_ID = "Xenova/yolos-tiny"; // change to your vendored model id
+  // Model → PII category mapping is per-model so different detectors can coexist.
+  // Anything not listed is ignored; unknown-but-plausible classes should be ADDED
+  // here (fail-closed), not dropped silently.
+  const REGISTRY = {
+    // Guaranteed-available default: YOLOS-tiny int8 (~6 MB q8). COCO has no 'face'
+    // class, so full-person boxes map to a coarse FACE region — deliberately
+    // over-broad, because fusion+policy tolerate over-redaction, not leaks.
+    "Xenova/yolos-tiny": {
+      task: "object-detection",
+      dtype: "q8",
+      device: "webgpu",            // auto-falls back to WASM if WebGPU unavailable
+      minScore: 0.5,
+      labels: { person: PII.FACE },
+      warmup: true,
+      note: "COCO person→coarse face region; swap to dedicated face ONNX when available.",
+    },
+  };
+
+  const ACTIVE_MODEL = "Xenova/yolos-tiny";
+
+  const BUNDLE_URL = "lib/vendor/transformers/transformers.min.js";
 
   let _available = false;
   let _detector = null;
   let _initTried = false;
+  let _warmupMs = null;
 
   // Resolve a packaged file to a same-origin URL (browser-extension context).
   function pkgUrl(rel) {
@@ -60,27 +75,56 @@
     return rel;
   }
 
+  function loadMod() {
+    return import(pkgUrl(BUNDLE_URL));
+  }
+
+  async function createDetector() {
+    const mod = await loadMod();
+    const { pipeline, env } = mod;
+    const cfg = REGISTRY[ACTIVE_MODEL];
+
+    // Force fully-offline, on-device inference. No network, ever.
+    env.allowRemoteModels = false;
+    env.allowLocalModels = true;
+    env.localModelPath = pkgUrl("models/");
+    if (env.backends?.onnx?.wasm) {
+      env.backends.onnx.wasm.wasmPaths = pkgUrl("lib/vendor/ort/");
+      env.backends.onnx.wasm.proxy = true; // keep WASM off the UI thread
+    }
+    return { mod, pipe: await pipeline(cfg.task, ACTIVE_MODEL, { device: cfg.device, dtype: cfg.dtype }) };
+  }
+
+  // Tiny gray frame: runs the full graph once so shader compile / wasm warm-up /
+  // weight upload happen before the first REAL screenshot (hides cold-start).
+  function warmupFrame(RawImage) {
+    const w = 64, h = 64;
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = data[i + 1] = data[i + 2] = 200;
+      data[i + 3] = 255;
+    }
+    return new RawImage(data, w, h, 4);
+  }
+
   async function init() {
     if (_initTried) return { available: _available };
     _initTried = true;
+    const cfg = REGISTRY[ACTIVE_MODEL];
     try {
-      // Dynamic import so the extension still loads when nothing is vendored.
-      // (A static top-level import would hard-fail the classic script.)
-      const mod = await import(pkgUrl("lib/vendor/transformers/transformers.min.js"));
-      const { pipeline, env } = mod;
+      const { mod, pipe } = await createDetector();
+      _detector = pipe;
 
-      // Force fully-offline, on-device inference. No network, ever.
-      env.allowRemoteModels = false;
-      env.localModelPath = pkgUrl("models/");
-      if (env.backends?.onnx?.wasm) {
-        env.backends.onnx.wasm.wasmPaths = pkgUrl("lib/vendor/ort/");
-        env.backends.onnx.wasm.proxy = true; // keep WASM off the UI thread
+      if (cfg.warmup) {
+        try {
+          const t0 = Date.now();
+          await _detector(warmupFrame(mod.RawImage), { threshold: 1.1 }); // full graph, yields nothing
+          _warmupMs = Date.now() - t0;
+        } catch (_) { /* warm-up is best-effort */ }
       }
-
-      _detector = await pipeline("object-detection", MODEL_ID, { device: "webgpu", dtype: "q8" });
       _available = true;
-      G.PBA.visionNeural._model = MODEL_ID;
-    } catch (e) {
+      G.PBA.visionNeural._model = ACTIVE_MODEL;
+    } catch (_) {
       // Not vendored (or failed to load) → stay silent; the built-in detector runs.
       _available = false;
     }
@@ -93,17 +137,16 @@
    */
   async function detect(image) {
     if (!_available || !_detector) return [];
-    // transformers.js accepts a RawImage built from raw RGBA bytes.
-    const mod = await import(pkgUrl("lib/vendor/transformers/transformers.min.js"));
-    const RawImage = mod.RawImage;
-    const raw = new RawImage(image.data, image.width, image.height, 4);
-    const out = await _detector(raw, { threshold: MIN_SCORE, percentage: false });
+    const cfg = REGISTRY[ACTIVE_MODEL];
+    const mod = await loadMod();
+    const raw = new mod.RawImage(image.data, image.width, image.height, 4);
+    const out = await _detector(raw, { threshold: cfg.minScore, percentage: false });
 
     const dets = [];
     for (const r of out || []) {
-      const cat = LABEL_MAP[(r.label || "").toLowerCase()];
+      const cat = cfg.labels[(r.label || "").toLowerCase()];
       if (!cat) continue;
-      if ((r.score || 0) < MIN_SCORE) continue;
+      if ((r.score || 0) < cfg.minScore) continue;
       const b = r.box || {};
       const x = Math.round(b.xmin), y = Math.round(b.ymin);
       const w = Math.round(b.xmax - b.xmin), h = Math.round(b.ymax - b.ymin);
@@ -116,7 +159,9 @@
   G.PBA.visionNeural = {
     init, detect,
     get available() { return _available; },
-    LABEL_MAP, MODEL_ID,
+    get model() { return _available ? ACTIVE_MODEL : null; },
+    get warmupMs() { return _warmupMs; },
+    REGISTRY, ACTIVE_MODEL,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = G.PBA.visionNeural;
 })();

@@ -34,12 +34,13 @@
     [PII.ADDRESS]:      { method: R.TOKENIZE, reversibleOk: false, minConf: 0.55 },
     [PII.FACE]:         { method: R.BLACKOUT, reversibleOk: true,  minConf: 0.5 },
     [PII.SIGNATURE]:    { method: R.BLACKOUT, reversibleOk: false, minConf: 0.5 },
+    [PII.ID_DOCUMENT]:  { method: R.BLACKOUT, reversibleOk: false, minConf: 0.45 },
     [PII.IP]:           { method: R.TOKENIZE, reversibleOk: false, minConf: 0.7 },
     [PII.GENERIC_SECRET]:{ method: R.BLACKOUT,reversibleOk: false, minConf: 0.6 },
   };
 
   const HIGH_RISK = new Set([PII.PASSWORD, PII.OTP, PII.API_KEY, PII.CREDIT_CARD,
-    PII.BANK_ACCOUNT, PII.AADHAAR, PII.PAN]);
+    PII.BANK_ACCOUNT, PII.AADHAAR, PII.PAN, PII.ID_DOCUMENT]);
 
   /**
    * @param {Array} redactionMap  from fusion.fuse()

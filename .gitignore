@@ -13,6 +13,7 @@ venv/
 # --- Vendored, large, or generated model assets (kept out of VCS) ---
 extension/lib/vendor/
 extension/models/
+.vendor-tmp/
 *.onnx
 *.wasm.map
 

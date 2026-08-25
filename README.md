@@ -210,8 +210,11 @@ geometry are browser-independent and covered by the eval regardless of host.
   CV core with a **WebGPU compute-shader path and a CPU fallback**. The GPU path is
   trusted only after a runtime probe reproduces the CPU classification, so it fails safe.
   An optional neural hook (`vision/vision-neural.js`, transformers.js/ONNX) is
-  code-complete and activates once weights are vendored (the extension CSP forbids CDN
-  loads, so this is intentionally off by default).
+  code-complete and activates once weights are vendored — now a one-command step:
+  `node tools/vendor-vision.mjs` (see [`docs/VENDORING.md`](docs/VENDORING.md)). It
+  unions with the classical core, warms up at init to hide cold-start, and adds an
+  `id_document` PII category plumbed end-to-end. The extension CSP forbids CDN loads,
+  so vendoring is intentionally offline-first.
 - **In-browser runtime of the WebGPU shader and `chrome.*` plumbing is not exercised in
   this environment.** It is covered by the Node-tested CPU core (identical algorithm),
   the GPU self-verification probe, syntax/byte checks, and the manual `demo/` page. We do
