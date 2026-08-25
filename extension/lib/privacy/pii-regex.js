@@ -92,8 +92,8 @@
     // UPI VPA: handle@bank (not an email — bank handles have no TLD dot after @).
     {
       type: PBA.PII.UPI,
-      re: /\b([a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64})\b/g,
-      validate: (m) => !/\.[a-zA-Z]{2,}$/.test(m), // exclude things ending in a TLD (those are emails)
+      re: /\b([a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}(?:\.[a-zA-Z]{2,64})*)\b/g,
+      validate: (m, all) => !/\.[a-zA-Z]{2,}$/.test(all), // exclude things ending in a TLD (those are emails)
       confidence: 0.75,
     },
     // Email.
@@ -161,7 +161,7 @@
         const idx = m.index + m[0].indexOf(value);
         const end = idx + value.length;
         if (overlaps(idx, end)) continue;
-        if (p.validate && !p.validate(value)) continue;
+        if (p.validate && !p.validate(value, m[0])) continue;
         if (p.contextRe) {
           const ctx = text.slice(Math.max(0, idx - win), Math.min(text.length, end + win));
           if (!p.contextRe.test(ctx)) continue;

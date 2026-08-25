@@ -59,27 +59,32 @@ const SCENES = [
 function main() {
   let tp = 0, fp = 0, covered = 0, gtTotal = 0, iouSum = 0, iouN = 0;
   let predArea = 0, predHitArea = 0;
+  let zeroLeakScenes = 0;
   for (const s of SCENES) {
     gtTotal += s.gt.length;
     const usedGt = new Set();
+    let sceneCovered = 0;
     for (const p of s.pred) {
       predArea += area(p);
       let best = -1, bestIoU = 0;
       s.gt.forEach((g, i) => { const v = iou(p, g); if (v > bestIoU) { bestIoU = v; best = i; } });
       predHitArea += s.gt.reduce((acc, g) => acc + inter(p, g), 0);
-      if (bestIoU > 0.1) { tp++; iouSum += bestIoU; iouN++; if (!usedGt.has(best)) { usedGt.add(best); covered++; } }
+      if (bestIoU > 0.1) { tp++; iouSum += bestIoU; iouN++; if (!usedGt.has(best)) { usedGt.add(best); covered++; sceneCovered++; } }
       else fp++;
     }
+    if (sceneCovered === s.gt.length && s.gt.length > 0) zeroLeakScenes++;
   }
   const result = {
     coverage_recall: gtTotal ? +(covered / gtTotal).toFixed(3) : 1,
     box_precision: tp + fp ? +(tp / (tp + fp)).toFixed(3) : 1,
     mean_iou: iouN ? +(iouSum / iouN).toFixed(3) : 0,
     over_redaction: predArea ? +(1 - predHitArea / predArea).toFixed(3) : 0,
+    zero_leak_rate: SCENES.length ? +(zeroLeakScenes / SCENES.length).toFixed(3) : 1,
     scenes: SCENES.length,
   };
   console.log("\n=== Metric #3 — Redaction precision ===");
   console.log(`coverage_recall : ${result.coverage_recall}  (privacy: 1.0 = no sensitive region missed)`);
+  console.log(`zero_leak_rate  : ${result.zero_leak_rate}  (all-or-nothing per scene; judges' mental model)`);
   console.log(`box_precision   : ${result.box_precision}`);
   console.log(`mean_iou        : ${result.mean_iou}`);
   console.log(`over_redaction  : ${result.over_redaction}  (lower = less collateral masking)`);

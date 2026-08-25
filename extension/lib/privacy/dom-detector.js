@@ -84,13 +84,18 @@
     if (type === "email") return { pii_type: PBA.PII.EMAIL, confidence: 0.85, source: "dom" };
     if (type === "tel") return { pii_type: PBA.PII.PHONE, confidence: 0.85, source: "dom" };
 
-    // Heuristic on name/id/label text.
+    // Heuristic on name/id/label text — email/phone before generic name to avoid
+    // misclassifying e.g. an email input whose placeholder is "name@example.com".
     const hay = (el.name + " " + el.id + " " + accessibleLabel(el)).toLowerCase();
     const map = [
       [/aadhaar|aadhar|uid/, PBA.PII.AADHAAR], [/\bpan\b/, PBA.PII.PAN],
       [/card|cvv|cvc/, PBA.PII.CREDIT_CARD], [/account|acct|ifsc/, PBA.PII.BANK_ACCOUNT],
       [/upi|vpa/, PBA.PII.UPI], [/otp|passcode/, PBA.PII.OTP],
+      [/email/, PBA.PII.EMAIL],
       [/dob|birth/, PBA.PII.DOB], [/address|street|pincode|zip/, PBA.PII.ADDRESS],
+      [/mobile|phone|contact/, PBA.PII.PHONE],
+      [/first\s*name|last\s*name|\bfull\s*name/, PBA.PII.PERSON],
+      [/\bname\b/, PBA.PII.PERSON],
       [/api|secret|token/, PBA.PII.API_KEY],
     ];
     for (const [re, t] of map) if (re.test(hay)) return { pii_type: t, confidence: 0.7, source: "dom" };

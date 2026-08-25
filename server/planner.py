@@ -21,7 +21,24 @@ if BACKEND == "auto":
     BACKEND = "vlm"
 
 # task-intent -> vault key used by fill_local (value resolved on the CLIENT)
-_PII_TO_SOURCE = {"email": "email", "phone": "phone", "person": "full_name"}
+_PII_TO_SOURCE = {
+    "email": "email", "phone": "phone", "person": "full_name",
+    "dob": "dob", "address": "address",
+    "aadhaar": "aadhaar", "pan": "pan",
+    "bank_account": "bank_account", "credit_card": "bank_account",
+    "upi": "upi",
+}
+
+def _vault_key_for(element):
+    """Pick the right vault key for a person field based on its label."""
+    if element.pii_type != "person":
+        return _PII_TO_SOURCE.get(element.pii_type)
+    label = (element.label or "").lower()
+    if "first" in label:
+        return "first_name"
+    if "last" in label or "family" in label or "surname" in label:
+        return "last_name"
+    return _PII_TO_SOURCE.get(element.pii_type)
 _PRIMARY_BTN_WORDS = ["submit", "continue", "next", "proceed", "login", "sign in",
                       "search", "send", "save", "apply", "confirm", "ok"]
 
@@ -31,11 +48,12 @@ def _mock_plan(ctx: SanitizedContext) -> ActionPlan:
 
     # 1. Fill the first empty sensitive field we can source locally.
     for e in ctx.elements:
-        if e.sensitive and e.value_state == "empty" and e.pii_type in _PII_TO_SOURCE:
+        vault_key = _vault_key_for(e)
+        if e.sensitive and e.value_state == "empty" and vault_key:
             return ActionPlan(
                 session_id=ctx.session_id, step=ctx.step,
                 reasoning=f"Fill the empty {e.pii_type} field from the local vault.",
-                actions=[Action(type="fill_local", target_id=e.id, source=_PII_TO_SOURCE[e.pii_type])],
+                actions=[Action(type="fill_local", target_id=e.id, source=vault_key)],
                 status="continue", confidence=0.7,
             )
 
