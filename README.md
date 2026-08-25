@@ -193,7 +193,7 @@ See [`DESIGN.md`](DESIGN.md) for the complete treatment.
 | Browser | Status | Notes |
 |---|---|---|
 | **Chrome / Chromium / Edge 121+** | **Verified target** | MV3 service worker + **offscreen document** host the WebGPU/canvas work; `minimum_chrome_version: 121`. |
-| **Firefox** | **Shimmed & documented, not verified** | Entry points use `const ext = globalThis.browser \|\| globalThis.chrome`, so the WebExtension APIs are addressed uniformly. Firefox does **not** implement `chrome.offscreen`; the vision/compositing host must move to an extension **background page** there. The vision core itself is portable (plain WebGPU/CPU) — the port is host plumbing, not algorithm work. We don't claim it runs on Firefox until that fallback is built and tested. |
+| **Firefox** | **Shimmed & documented, not verified** | Entry points use `const ext = globalThis.browser \|\| globalThis.chrome`, so the WebExtension APIs are addressed uniformly. Firefox does **not** implement `chrome.offscreen`; the service worker **feature-detects** it and, when absent, **degrades to fail-closed text-only** (vision skipped, screenshot withheld, receipt marked `offscreen_unsupported_text_only`) instead of throwing. To get on-device *vision* on Firefox the compositing host must move to an extension **background page** — the vision core itself is portable (plain WebGPU/CPU), so that port is host plumbing, not algorithm work. We don't claim vision runs on Firefox until that fallback is built and tested. |
 
 The Node-scored detector core, the checksum PII logic, fusion, policy and redaction
 geometry are browser-independent and covered by the eval regardless of host.

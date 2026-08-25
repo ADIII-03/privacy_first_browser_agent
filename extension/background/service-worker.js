@@ -31,14 +31,25 @@ function pushLog(entry) {
 }
 
 // ---- offscreen document lifecycle (needed for canvas + WebGPU inference) ----
+// The offscreen API is Chromium-only. On a browser that lacks it (e.g. Firefox,
+// which has no chrome.offscreen at all) we must NOT throw: the vision + compositor
+// path is skipped and the fail-closed policy withholds the screenshot (text-only).
+// Feature-detect the API OBJECT, not just the method — `ext.offscreen` is
+// `undefined` on Firefox, so `ext.offscreen.hasDocument?.()` throws a TypeError
+// before the optional chain on `hasDocument` can help (the `?.` guards the call,
+// not the property read on an undefined base).
+const offscreenSupported = !!(ext.offscreen && ext.offscreen.createDocument);
+
 async function ensureOffscreen() {
+  if (!offscreenSupported) return false;
   const has = await ext.offscreen.hasDocument?.();
-  if (has) return;
+  if (has) return true;
   await ext.offscreen.createDocument({
     url: "offscreen/offscreen.html",
     reasons: ["DOM_SCRAPING", "BLOBS"],
     justification: "Run local vision inference and composite the redacted screenshot off the main thread.",
   });
+  return true;
 }
 
 function sendToOffscreen(message) {
@@ -86,9 +97,13 @@ async function runTask(task, tabId) {
       const meta = await sendToTab(tabId, { cmd: "VIEWPORT" }).catch(() => null);
       const dpr = (meta && meta.dpr) || 1;
 
-      // 2. LOCAL VISION (on-device detector; returns face/signature boxes in CSS px)
-      const vision = await sendToOffscreen({ cmd: "VISION", imageDataUrl: rawShot, dpr })
-        .catch(() => ({ detections: [], ready: false }));
+      // 2. LOCAL VISION (on-device detector; returns face/signature boxes in CSS px).
+      // No offscreen host (non-Chromium) → skip inference; vision.ready stays false
+      // so the policy fails closed (withholds the screenshot on image pages).
+      const vision = offscreenSupported
+        ? await sendToOffscreen({ cmd: "VISION", imageDataUrl: rawShot, dpr })
+            .catch(() => ({ detections: [], ready: false }))
+        : { detections: [], ready: false };
 
       // 3. PERCEIVE + PROTECT (in-page; produces sanitized payload + redaction plan)
       const perceived = await sendToTab(tabId, {
@@ -100,13 +115,26 @@ async function runTask(task, tabId) {
       pushLog({ kind: "receipt", step: state.step, receipt: payload.privacy_receipt });
       state.receipts.push(payload.privacy_receipt);
 
-      // 4. REDACT PIXELS + draw Set-of-Marks (offscreen), attach sanitized image
-      if (perceived.sendScreenshot) {
+      // 4. REDACT PIXELS + draw Set-of-Marks (offscreen), attach sanitized image.
+      // Compositing REQUIRES the offscreen host. With no way to redact pixels we must
+      // never ship raw ones, so a browser without offscreen drops to text-only here —
+      // and we correct the receipt so the audit record reflects what actually shipped.
+      if (perceived.sendScreenshot && offscreenSupported) {
         const composed = await sendToOffscreen({
           cmd: "COMPOSE", imageDataUrl: rawShot, plan: perceived.redactionPlan,
           marks: perceived.marks, dpr: payload.viewport.dpr || 1,
         });
         payload.screenshot = composed && composed.dataUrl ? composed.dataUrl : null;
+      } else if (perceived.sendScreenshot && !offscreenSupported) {
+        payload.screenshot = null;
+        payload.screenshot_included = false;
+        if (payload.privacy_receipt) {
+          payload.privacy_receipt.send_screenshot = false;
+          payload.privacy_receipt.fail_closed_triggered = true;
+          payload.privacy_receipt.downgrade_reason = "offscreen_unsupported_text_only";
+          payload.privacy_receipt.residual_risk = "mitigated_text_only";
+        }
+        pushLog({ kind: "downgrade", step: state.step, reason: "offscreen_unsupported_text_only" });
       }
 
       // 5. REASON (server sees only sanitized payload)

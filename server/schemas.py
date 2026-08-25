@@ -21,7 +21,7 @@ PROTOCOL_VERSION = "1.0"
 PII_TYPES = {
     "password", "otp", "api_key", "credit_card", "bank_account", "aadhaar",
     "pan", "upi", "email", "phone", "person", "address", "dob", "face",
-    "signature", "ip", "generic_secret",
+    "signature", "id_document", "ip", "generic_secret",
 }
 VALUE_STATES = {"empty", "filled", "redacted"}
 ActionType = Literal[
