@@ -83,7 +83,7 @@ shell (or leave them unset).
 
 ## 1. Reasoning server
 
-**Fastest — one command** (creates the venv, installs `requirements.txt`, starts uvicorn; safe to re-run — only the first run installs):
+**Fastest — one command** (restores the exact environment from `uv.lock` via [uv](https://docs.astral.sh/uv/), starts uvicorn; safe to re-run — only the first run syncs). No uv? The scripts fall back to plain venv + pip automatically.
 
 | OS | From the `server/` folder |
 |---|---|
@@ -92,7 +92,17 @@ shell (or leave them unset).
 
 Extra args pass straight through to uvicorn (e.g. `.\run.ps1 --port 9000`); force a dependency refresh with `-Reinstall` (PowerShell) or `PBA_REINSTALL=1` (bash). If PowerShell refuses to run the script (execution policy), use `powershell -ExecutionPolicy Bypass -File run.ps1`.
 
-<details><summary><b>Or do it step by step</b> (same result, manual)</summary>
+Run the offline verification suite the same way: `uv run python selftest.py` (or `.venv\Scripts\python selftest.py`).
+
+Manual equivalent (uv):
+
+```bash
+cd server
+uv sync            # creates .venv from uv.lock (add --reinstall to refresh)
+uv run uvicorn main:app --port 8000
+```
+
+<details><summary><b>Or do it step by step without uv</b> (same result, manual)</summary>
 
 **Windows (PowerShell):**
 
@@ -100,7 +110,7 @@ Extra args pass straight through to uvicorn (e.g. `.\run.ps1 --port 9000`); forc
 cd server
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements.txt   # mirror of pyproject.toml for non-uv setups
 python -m uvicorn main:app --port 8000
 ```
 
@@ -109,7 +119,7 @@ python -m uvicorn main:app --port 8000
 ```bash
 cd server
 python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt   # mirror of pyproject.toml for non-uv setups
 python -m uvicorn main:app --port 8000
 ```
 
@@ -170,10 +180,28 @@ The demo page deliberately plants every signal the filter must catch — typed s
 fields, checksum-valid Aadhaar/PAN/card text, two `<img>` faces, and a `<canvas>`
 signature. Full walkthrough: [`demo/README.md`](demo/README.md).
 
+### 3b. Same thing, automated — `eval/e2e_run.sh`
+
+One command runs the **real extension in a real Chromium** (headless) through the full
+loop — capture → on-device vision → redaction → `/plan` → validated action →
+`fill_local` from the vault → done — and prints the privacy receipts per step:
+
+```bash
+bash eval/e2e_run.sh                  # headless, ~10 s, exit 0 on PASS
+HEADED=1 SLOW_MS=1200 bash eval/e2e_run.sh   # visible window, slowed for watching
+```
+
+The script wires everything itself: reasoning server (uv), demo page over http,
+a **test-rig extension copy** with `host_permissions: ["<all_urls>"]`
+(`captureVisibleTab` needs `activeTab` granted by a genuine user gesture, which
+automation cannot produce — the shipped manifest stays strict), Chromium launch
+(auto-detects the Playwright cache; `CHROME_BIN` to override), and CDP driving via
+[`eval/e2e_browser.py`](eval/e2e_browser.py). Final frame lands in `eval/out_e2e.png`.
+
 > **Browser runtime note.** The in-browser WebGPU shader and `chrome.*` plumbing are
-> verified by hand on the demo page; the CPU vision core (identical algorithm) is what
-> the Node evaluator scores. Firefox is shimmed and documented but not verified — see the
-> README "Browser support" section.
+> verified by the E2E harness above and by hand on the demo page; the CPU vision core
+> (identical algorithm) is what the Node evaluator scores. Firefox is shimmed and
+> documented but not verified — see the README "Browser support" section.
 
 ---
 

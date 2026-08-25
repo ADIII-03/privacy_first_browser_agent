@@ -96,8 +96,8 @@ privacy-browser-agent/
 
 ```bash
 cd server
-pip install -r requirements.txt
-uvicorn main:app --port 8000        # http://localhost:8000/health
+uv sync                            # restores .venv from uv.lock (or: pip install -r requirements.txt)
+uv run uvicorn main:app --port 8000   # http://localhost:8000/health
 ```
 
 The default `PBA_BACKEND=mock` uses a deterministic heuristic planner, so the whole

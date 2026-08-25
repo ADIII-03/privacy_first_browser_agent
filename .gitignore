@@ -28,3 +28,7 @@ Thumbs.db
 .idea/
 .vscode/
 !.vscode/extensions.json
+
+# --- E2E browser harness artifacts ---
+eval/e2e_work/
+eval/out_e2e.png
