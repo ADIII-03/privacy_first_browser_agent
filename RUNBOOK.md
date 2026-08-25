@@ -38,6 +38,17 @@ shell (or leave them unset).
 
 ## 1. Reasoning server
 
+**Fastest — one command** (creates the venv, installs `requirements.txt`, starts uvicorn; safe to re-run — only the first run installs):
+
+| OS | From the `server/` folder |
+|---|---|
+| Windows (PowerShell) | `.\run.ps1` |
+| macOS / Linux | `bash run.sh` |
+
+Extra args pass straight through to uvicorn (e.g. `.\run.ps1 --port 9000`); force a dependency refresh with `-Reinstall` (PowerShell) or `PBA_REINSTALL=1` (bash). If PowerShell refuses to run the script (execution policy), use `powershell -ExecutionPolicy Bypass -File run.ps1`.
+
+<details><summary><b>Or do it step by step</b> (same result, manual)</summary>
+
 **Windows (PowerShell):**
 
 ```powershell
@@ -56,6 +67,8 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 python -m uvicorn main:app --port 8000
 ```
+
+</details>
 
 Leave it running. It's healthy when `http://localhost:8000/health` returns:
 

@@ -22,9 +22,13 @@
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const ROOT = path.resolve(new URL(import.meta.url).pathname, "..", "..");
+// On Windows, `new URL(import.meta.url).pathname` yields "/C:/Users/..." — the
+// leading slash makes path.resolve prepend the current drive ("C:\C:\Users\...").
+// fileURLToPath() converts a file:// URL to a real OS path on every platform.
+const ROOT = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const EXT = path.join(ROOT, "extension");
 const VENDOR_TS = path.join(EXT, "lib", "vendor", "transformers");
 const VENDOR_ORT = path.join(EXT, "lib", "vendor", "ort");
@@ -99,7 +103,11 @@ async function fetchTarballExtract(tarballUrl, label, distSub) {
           if (buf.length < 1024) throw new Error(`tarball suspiciously small (${buf.length} B)`);
         }
         await writeFile(tmpTgz, buf);
-        execFileSync("tar", ["-xzf", tmpTgz, "-C", work]); // throws if file vanished
+        // Run tar with cwd=work and a RELATIVE filename. A Windows absolute path
+        // ("C:\...") on tar's command line is misread by GNU tar as a remote host
+        // ("host:path" syntax) → "Cannot connect to C:". Relative + cwd avoids the
+        // drive-letter colon entirely and works for both GNU tar and bsdtar.
+        execFileSync("tar", ["-xzf", `${label}.tgz`], { cwd: work }); // throws if file vanished
         break;
       } catch (e) {
         if (attempt >= 3) throw e;
