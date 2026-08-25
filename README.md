@@ -101,7 +101,8 @@ uvicorn main:app --port 8000        # http://localhost:8000/health
 ```
 
 The default `PBA_BACKEND=mock` uses a deterministic heuristic planner, so the whole
-loop runs with **zero external dependencies**. To attach a real vision-language model:
+loop runs with **zero external dependencies**. To attach a real vision-language model,
+point at any OpenAI-compatible endpoint:
 
 ```bash
 export PBA_BACKEND=vlm
@@ -109,6 +110,25 @@ export PBA_VLM_BASE_URL=http://localhost:8001/v1     # e.g. a vLLM server
 export PBA_VLM_MODEL=Qwen2.5-VL-7B-Instruct
 uvicorn main:app --port 8000
 ```
+
+Or run a **routed chain with failover** — cloud UI-TARS first, local model as the
+offline fallback (the air-gapped story is a config change, not a code change):
+
+```bash
+export PBA_BACKEND=auto
+export OPENROUTER_API_KEY=sk-or-...
+export PBA_VLM_ROUTES='[
+ {"name":"openrouter","base_url":"https://openrouter.ai/api/v1",
+  "model":"bytedance/ui-tars-1.5-7b","api_key_env":"OPENROUTER_API_KEY"},
+ {"name":"local-vllm","base_url":"http://localhost:8001/v1",
+  "model":"Qwen/Qwen2.5-VL-7B-Instruct"}
+]'
+```
+
+UI-TARS models get a dedicated adapter profile (native Thought→Action DSL parsed,
+coordinates snapped to element ids, sensitive-field typing converted to local-vault
+fills). See [`RUNBOOK.md`](RUNBOOK.md) for all env vars and
+[`server/selftest.py`](server/selftest.py) for an offline verification suite.
 
 ### 2. Extension
 

@@ -51,7 +51,8 @@ def _residual_scan(ctx: SanitizedContext):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "backend": BACKEND, "protocol": "1.0"}
+    from router import describe
+    return {"ok": True, "protocol": "1.0", **describe(BACKEND)}
 
 
 @app.post("/plan", response_model=ActionPlan)
