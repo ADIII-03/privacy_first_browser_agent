@@ -1,20 +1,24 @@
 """
 planner.py — Turns a sanitized context into a next-step ActionPlan.
 
-Two backends, selected by env var PBA_BACKEND:
+Backends, selected by env var PBA_BACKEND:
   - "mock" (default): a deterministic heuristic planner. Requires no GPU/model,
     so the whole end-to-end loop runs on any laptop for demos and CI.
-  - "vlm": delegates to a real open-weights VLM (Qwen2.5-VL / Llama-3.2-Vision)
-    via an OpenAI-compatible endpoint (see vlm_adapter.py).
+  - "vlm": the ROUTED chain of OpenAI-compatible endpoints (router.py) —
+    e.g. OpenRouter UI-TARS-1.5-7B first, local vLLM second — with automatic
+    failover, and the mock planner as final safety net.
+  - "auto": alias of "vlm" (kept explicit in docs/ops tooling).
 
-Whatever the backend proposes is passed through security.sanitize_plan() by the
-caller, so the planner itself is allowed to be optimistic.
+Whatever any backend proposes is passed through security.sanitize_plan() by the
+caller, so planners are allowed to be optimistic.
 """
 from __future__ import annotations
 import os
 from schemas import SanitizedContext, ActionPlan, Action
 
 BACKEND = os.environ.get("PBA_BACKEND", "mock").lower()
+if BACKEND == "auto":
+    BACKEND = "vlm"
 
 # task-intent -> vault key used by fill_local (value resolved on the CLIENT)
 _PII_TO_SOURCE = {"email": "email", "phone": "phone", "person": "full_name"}
@@ -71,9 +75,11 @@ def _mock_plan(ctx: SanitizedContext) -> ActionPlan:
 
 def plan(ctx: SanitizedContext) -> ActionPlan:
     if BACKEND == "vlm":
-        from vlm_adapter import vlm_plan  # imported lazily so mock mode needs no deps
+        from router import plan_with_fallback  # lazy so mock mode needs no deps
         try:
-            return vlm_plan(ctx)
+            p, used = plan_with_fallback(ctx)
+            p.reasoning = f"[{used}] {p.reasoning}".strip()
+            return p
         except Exception as e:  # fail safe -> heuristic, never crash the loop
             p = _mock_plan(ctx)
             p.reasoning = f"[vlm fallback: {e}] " + p.reasoning

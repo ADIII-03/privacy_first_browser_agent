@@ -19,11 +19,56 @@ vision-language model.
 
 | Variable | Needed when | Default | Purpose |
 |---|---|---|---|
-| `PBA_BACKEND` | never required | `mock` | `mock` (heuristic, offline) or `vlm` (real model) |
+| `PBA_BACKEND` | never required | `mock` | `mock` (heuristic, offline) or `vlm` / `auto` (routed chain, see below) |
 | `PORT` | only with `python main.py` | `8000` | server port (ignored when you pass `uvicorn --port`) |
-| `PBA_VLM_BASE_URL` | only if `vlm` | `http://localhost:8001/v1` | any OpenAI-compatible endpoint (vLLM, SGLang, Ollama, LM Studio) |
-| `PBA_VLM_MODEL` | only if `vlm` | `Qwen/Qwen2.5-VL-7B-Instruct` | model name to request |
-| `PBA_VLM_API_KEY` | only if `vlm` | `not-needed-for-local` | API key for remote endpoints |
+| `PBA_VLM_ROUTES` | multi-endpoint setups | *(unset)* | JSON list of OpenAI-compatible endpoints tried **in order**, with 60 s cooldown failover — see below |
+| `PBA_VLM_BASE_URL` | single-endpoint `vlm` | `http://localhost:8001/v1` | any OpenAI-compatible endpoint (vLLM, SGLang, Ollama, llama-server) |
+| `PBA_VLM_MODEL` | single-endpoint `vlm` | `Qwen/Qwen2.5-VL-7B-Instruct` | model name to request |
+| `PBA_VLM_API_KEY` | remote endpoints | `not-needed-for-local` | API key for the legacy single endpoint |
+| `PBA_VLM_TIMEOUT_S` | slow links | `30` | per-request HTTP timeout |
+| `PBA_VLM_COOLDOWN_S` | flaky primaries | `60` | how long a failed route is skipped |
+
+### Model profiles & the route chain
+
+The adapter auto-selects a **profile** from the model name:
+
+- **`json`** — generic instruct VLMs (Qwen2.5-VL, InternVL, …). Closed-vocabulary
+  JSON action contract.
+- **`uitars`** — ByteDance UI-TARS-1.x models. Parses the native
+  `Thought/Action: click(x,y)` DSL and **snaps normalized coordinates to the nearest
+  element id**, so the client keeps executing by id. A `type` aimed at a sensitive
+  field is converted to `fill_local`, so raw values never cross the network.
+
+Single endpoint (legacy, unchanged):
+
+```bash
+export PBA_BACKEND=vlm
+export PBA_VLM_BASE_URL=http://localhost:8001/v1     # your vLLM / Ollama / llama-server
+export PBA_VLM_MODEL=Qwen/Qwen2.5-VL-7B-Instruct
+```
+
+Routed chain — cloud first for speed, local as offline fallback (ISRO story):
+
+```bash
+export PBA_BACKEND=auto
+export OPENROUTER_API_KEY=sk-or-...
+export PBA_VLM_ROUTES='[
+ {"name":"openrouter","base_url":"https://openrouter.ai/api/v1",
+  "model":"bytedance/ui-tars-1.5-7b","api_key_env":"OPENROUTER_API_KEY"},
+ {"name":"local-vllm","base_url":"http://localhost:8001/v1",
+  "model":"Qwen/Qwen2.5-VL-7B-Instruct"}
+]'
+```
+
+A dead/unreachable route is skipped after its first failure (cooldown), and if every
+route fails the deterministic mock planner answers so a live demo never dies mid-task.
+`GET /health` reports the active backend and each route's health.
+
+Verify the reasoning tier without a model or GPU:
+
+```bash
+python selftest.py    # parser units + HTTP layer + failover, all offline
+```
 
 There is no `.env` file — the code reads `os.environ` directly, so you set these in the
 shell (or leave them unset).
