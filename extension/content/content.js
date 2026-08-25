@@ -26,9 +26,25 @@
   // Demo values; in production back this with chrome.storage + OS keychain and
   // require per-use user consent. Keys are referenced by fill_local.source.
   const VAULT = {
+    // Contact & identity — split name fields cover real-world forms (First/Last)
     email: "user@example.com",
     phone: "9876543210",
-    full_name: "A. User",
+    full_name: "Aarav User",
+    first_name: "Aarav",
+    last_name: "User",
+    // Additional profile — all local-only, fill_local resolves these on-device.
+    // Edit here or override at runtime via chrome.storage.local.set({ vault: { ... }}).
+    dob: "1995-06-15",
+    address: "123 MG Road, Bengaluru, KA 560001",
+    city: "Bengaluru",
+    state: "Karnataka",
+    pincode: "560001",
+    country: "India",
+    // IDs / finance — demo-shaped but checksum-aware; replace with real values locally.
+    aadhaar: "234567890123",
+    pan: "ABCDE1234F",
+    bank_account: "123456789012",
+    upi: "a.user@okaxis",
   };
   // Merge any user-configured vault entries from local storage over the demo
   // defaults. The values live ONLY on the device and are referenced by key —

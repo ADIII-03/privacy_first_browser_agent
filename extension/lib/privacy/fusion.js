@@ -30,7 +30,8 @@
   function sliceBox(runBox, textLen, matchIndex, matchLen) {
     const [x, y, w, h] = runBox;
     const cw = w / Math.max(1, textLen);
-    return [Math.round(x + cw * matchIndex - 2), y - 1, Math.round(cw * matchLen + 4), h + 2];
+    // No padding here — the policy engine applies the single canonical pad.
+    return [Math.round(x + cw * matchIndex), y, Math.round(cw * matchLen), h];
   }
 
   /**
