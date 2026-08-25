@@ -31,6 +31,7 @@
     DOB: "dob",
     FACE: "face",
     SIGNATURE: "signature",
+    ID_DOCUMENT: "id_document", // whole-region redaction (Aadhaar/PAN/passport photos & scans)
     IP: "ip",
     GENERIC_SECRET: "generic_secret",
   });

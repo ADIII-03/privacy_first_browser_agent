@@ -80,6 +80,7 @@ rows[rows.length - 1].spans = [{ type: "ip", start: rows[rows.length - 1].text.i
   end: rows[rows.length - 1].text.indexOf("10.0.0.1") + 8, value: "10.0.0.1" }];
 
 const outPath = path.join(__dirname, "dataset", "pii_samples.jsonl");
+fs.mkdirSync(path.dirname(outPath), { recursive: true }); // dataset/ is gitignored — fresh clones lack it
 fs.writeFileSync(outPath, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
 console.log(`Wrote ${rows.length} samples -> ${outPath}`);
 console.log(`  positives: ${rows.filter((r) => r.spans.length).length}, negatives: ${rows.filter((r) => !r.spans.length).length}`);
