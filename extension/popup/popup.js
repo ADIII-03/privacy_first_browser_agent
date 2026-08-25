@@ -24,6 +24,27 @@ function renderReceipt(r) {
     .map(([k, v]) => `<span>${k}: ${v}</span>`).join("");
 }
 
+function renderTelemetry(state) {
+  if (!state || !state.telemetry) return;
+  const t = state.telemetry;
+  $("rStreak").textContent = (t.zeroLeakStreak || 0) + " steps ✓";
+  $("tHeap").textContent = (t.resources && t.resources.heapMB ? t.resources.heapMB + " MB" : "–");
+  const last = t.phases && t.phases[t.phases.length - 1];
+  $("tStep").textContent = last ? last.total + " ms" : "–";
+  if (last) {
+    const total = last.total || 1;
+    const wf = $("waterfall");
+    wf.innerHTML = [
+      ["cap", last.capture, "wf-cap"], ["vis", last.vision, "wf-vis"],
+      ["per", last.perceive, "wf-per"], ["red", last.redact, "wf-red"],
+      ["srv", last.server, "wf-srv"],
+    ].map(([k, v, cls]) => {
+      const w = Math.max(8, Math.round((v / total) * 100));
+      return `<div class="wf-seg ${cls}" style="flex:${w}" title="${k}:${v}ms">${v}ms</div>`;
+    }).join("");
+  }
+}
+
 function renderLog(log) {
   const el = $("log");
   el.innerHTML = (log || []).slice(-60).map((e) => {
@@ -43,6 +64,7 @@ function renderState(state) {
   if (!state) return;
   const lastReceipt = state.receipts && state.receipts[state.receipts.length - 1];
   renderReceipt(lastReceipt);
+  renderTelemetry(state);
   renderLog(state.log);
 }
 

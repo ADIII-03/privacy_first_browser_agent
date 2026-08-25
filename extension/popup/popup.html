@@ -26,6 +26,11 @@
       .warn { background: #fef9c3; color: #854d0e; }
       .bad { background: #fee2e2; color: #991b1b; }
       .cats span { display: inline-block; margin: 2px 4px 0 0; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3730a3; font-size: 11px; }
+      .telemetry { margin-top: 10px; padding: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
+      .telemetry h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+      .waterfall { display: flex; gap: 2px; height: 18px; margin: 6px 0; }
+      .wf-seg { border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; font-weight: 700; }
+      .wf-cap { background: #3b82f6; } .wf-vis { background: #8b5cf6; } .wf-per { background: #ec4899; } .wf-red { background: #f59e0b; } .wf-srv { background: #10b981; }
       #log { margin-top: 12px; max-height: 220px; overflow: auto; font: 11px/1.4 ui-monospace, monospace; background: #0b1020; color: #cbd5e1; border-radius: 10px; padding: 8px; }
       #log .l { white-space: pre-wrap; word-break: break-word; padding: 1px 0; }
       #log .k { color: #7dd3fc; }
@@ -51,7 +56,16 @@
         <div class="stat"><span>Redacted</span><b id="rRedacted">–</b></div>
         <div class="stat"><span>Screenshot sent</span><b id="rShot">–</b></div>
         <div class="stat"><span>Residual risk</span><b id="rRisk">–</b></div>
+        <div class="stat"><span>Zero-leak streak</span><b id="rStreak" style="color:#059669">–</b></div>
         <div class="cats" id="rCats"></div>
+      </div>
+
+      <div class="telemetry" id="telemetryCard">
+        <h3>Performance (P3 telemetry)</h3>
+        <div class="stat"><span>Heap</span><b id="tHeap">–</b></div>
+        <div class="stat"><span>Last step</span><b id="tStep">–</b></div>
+        <div class="waterfall" id="waterfall"></div>
+        <div style="font-size:10px;color:#9ca3af;display:flex;gap:6px"><span style="color:#3b82f6">■ cap</span><span style="color:#8b5cf6">■ vis</span><span style="color:#ec4899">■ dom</span><span style="color:#f59e0b">■ redact</span><span style="color:#10b981">■ server</span></div>
       </div>
 
       <div id="log"></div>

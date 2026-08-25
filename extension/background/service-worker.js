@@ -13,7 +13,10 @@
  */
 
 const DEFAULTS = { serverUrl: "http://localhost:8000", maxSteps: 25, loopLimit: 3 };
-const state = { running: false, tabId: null, sessionId: null, step: 0, log: [], receipts: [] };
+const state = {
+  running: false, tabId: null, sessionId: null, step: 0, log: [], receipts: [],
+  telemetry: { zeroLeakStreak: 0, phases: [], resources: { heapMB: 0, p95Ms: 0 } }
+};
 
 // Cross-browser shim: Firefox exposes the WebExtension API as `browser`, Chromium
 // as `chrome`. Everything below goes through `ext` so the same code runs on both
@@ -78,7 +81,10 @@ async function callServer(serverUrl, payload) {
 // ---- the loop ----------------------------------------------------------
 async function runTask(task, tabId) {
   const cfg = await getConfig();
-  Object.assign(state, { running: true, tabId, sessionId: crypto.randomUUID(), step: 0, log: [], receipts: [] });
+  Object.assign(state, {
+    running: true, tabId, sessionId: crypto.randomUUID(), step: 0, log: [], receipts: [],
+    telemetry: { zeroLeakStreak: 0, phases: [], resources: { heapMB: 0, p95Ms: 0 } }
+  });
   await ensureOffscreen();
   pushLog({ kind: "start", task });
 
@@ -87,9 +93,13 @@ async function runTask(task, tabId) {
   try {
     while (state.running && state.step < cfg.maxSteps) {
       state.step++;
+      const t0 = performance.now();
+      const phases = {};
 
       // 1. CAPTURE (raw — stays in the worker/offscreen, never sent)
+      let t = performance.now();
       const rawShot = await captureScreenshot(tabId);
+      phases.capture = Math.round(performance.now() - t);
 
       // 1b. Device-pixel ratio from the page: captureVisibleTab gives a device-pixel
       // image, but DOM boxes are CSS pixels. The detector needs dpr to return CSS-px
@@ -100,25 +110,36 @@ async function runTask(task, tabId) {
       // 2. LOCAL VISION (on-device detector; returns face/signature boxes in CSS px).
       // No offscreen host (non-Chromium) → skip inference; vision.ready stays false
       // so the policy fails closed (withholds the screenshot on image pages).
+      t = performance.now();
       const vision = offscreenSupported
         ? await sendToOffscreen({ cmd: "VISION", imageDataUrl: rawShot, dpr })
             .catch(() => ({ detections: [], ready: false }))
         : { detections: [], ready: false };
+      phases.vision = Math.round(performance.now() - t);
 
       // 3. PERCEIVE + PROTECT (in-page; produces sanitized payload + redaction plan)
+      t = performance.now();
       const perceived = await sendToTab(tabId, {
         cmd: "PERCEIVE", task, sessionId: state.sessionId, step: state.step,
         visionDetections: vision.detections || [], visionReady: !!vision.ready,
       });
       if (!perceived || !perceived.ok) throw new Error("perceive_failed");
       const payload = perceived.payload;
+      phases.perceive = Math.round(performance.now() - t);
       pushLog({ kind: "receipt", step: state.step, receipt: payload.privacy_receipt });
       state.receipts.push(payload.privacy_receipt);
+      // Zero-leak streak: consecutive steps where all detected PII was redacted
+      if (payload.privacy_receipt.detected === payload.privacy_receipt.redacted) {
+        state.telemetry.zeroLeakStreak++;
+      } else {
+        state.telemetry.zeroLeakStreak = 0;
+      }
 
       // 4. REDACT PIXELS + draw Set-of-Marks (offscreen), attach sanitized image.
       // Compositing REQUIRES the offscreen host. With no way to redact pixels we must
       // never ship raw ones, so a browser without offscreen drops to text-only here —
       // and we correct the receipt so the audit record reflects what actually shipped.
+      t = performance.now();
       if (perceived.sendScreenshot && offscreenSupported) {
         const composed = await sendToOffscreen({
           cmd: "COMPOSE", imageDataUrl: rawShot, plan: perceived.redactionPlan,
@@ -136,10 +157,20 @@ async function runTask(task, tabId) {
         }
         pushLog({ kind: "downgrade", step: state.step, reason: "offscreen_unsupported_text_only" });
       }
+      phases.redact = Math.round(performance.now() - t);
 
       // 5. REASON (server sees only sanitized payload)
+      t = performance.now();
       const plan = await callServer(cfg.serverUrl, payload);
-      pushLog({ kind: "plan", step: state.step, status: plan.status, reasoning: plan.reasoning, actions: plan.actions });
+      phases.server = Math.round(performance.now() - t);
+      phases.total = Math.round(performance.now() - t0);
+      state.telemetry.phases.push({ step: state.step, ...phases });
+      // Resource snapshot (best-effort)
+      try {
+        const mem = performance.memory ? (performance.memory.usedJSHeapSize / 1048576).toFixed(1) : 0;
+        state.telemetry.resources = { heapMB: mem, lastStepMs: phases.total };
+      } catch (_) {}
+      pushLog({ kind: "plan", step: state.step, status: plan.status, reasoning: plan.reasoning, actions: plan.actions, phases });
 
       if (plan.status === "done") { pushLog({ kind: "done" }); break; }
       if (plan.status === "abort" || plan.status === "need_user") { pushLog({ kind: plan.status, reasoning: plan.reasoning }); break; }

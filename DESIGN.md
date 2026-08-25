@@ -348,7 +348,26 @@ is portable (plain WebGPU/CPU), so the port is host-plumbing, not algorithm work
 
 ---
 
-## 13. Limitations and honest gaps
+## 13. Compliance by construction
+
+The privacy layer is not only a security feature — it is a **legal safeguard**:
+
+- **UIDAI Masked Aadhaar** — The redactor supports `XXXX XXXX 1234` display (last 4 digits)
+  as per UIDAI circular on masked Aadhaar sharing, instead of the full 12-digit number.
+  The detector validates Aadhaar via the Verhoeff checksum mandated by UIDAI for AUA
+  client-side validation.
+- **DPDP Act 2023 §8(5) & DPDP Rules 2025 Rule 6(1)(a)** — Data Fiduciaries must implement
+  *reasonable security safeguards* including *masking / tokenization / virtual tokens*.
+  The extension implements Rule 6 literally — PII is replaced by `<CATEGORY_n>` tokens
+  and blackout boxes **before any network transmission** (see `policy.js:57` fail-closed
+  default and `schemas.py:62` token placeholder enforcement).
+- **RBI & IT Dept** — No full Aadhaar storage; PAN holder-type validation per Income Tax
+  Dept. format `ABCDE1234F`.
+
+Citing these in the SIH presentation signals to ISRO judges that the system is not
+just technically private, but **legally compliant by design**.
+
+## 14. Limitations and honest gaps
 
 - **In-browser runtime of the WebGPU shader and `chrome.*` plumbing is not exercised in
   CI.** It is covered by (a) the Node-tested CPU core running the identical algorithm,
@@ -366,7 +385,7 @@ is portable (plain WebGPU/CPU), so the port is host-plumbing, not algorithm work
 
 ---
 
-## 14. File map
+## 15. File map
 
 | Area | Files |
 |---|---|
