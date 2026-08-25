@@ -17,6 +17,10 @@ extension/models/
 *.onnx
 *.wasm.map
 
+# --- eval-local binaries & test fixtures (export/fetch locally; provenance-sensitive) ---
+eval/models/
+eval/*.png
+
 # --- Editor / OS cruft ---
 .DS_Store
 Thumbs.db
