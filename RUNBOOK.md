@@ -180,10 +180,28 @@ The demo page deliberately plants every signal the filter must catch — typed s
 fields, checksum-valid Aadhaar/PAN/card text, two `<img>` faces, and a `<canvas>`
 signature. Full walkthrough: [`demo/README.md`](demo/README.md).
 
+### 3b. Same thing, automated — `eval/e2e_run.sh`
+
+One command runs the **real extension in a real Chromium** (headless) through the full
+loop — capture → on-device vision → redaction → `/plan` → validated action →
+`fill_local` from the vault → done — and prints the privacy receipts per step:
+
+```bash
+bash eval/e2e_run.sh                  # headless, ~10 s, exit 0 on PASS
+HEADED=1 SLOW_MS=1200 bash eval/e2e_run.sh   # visible window, slowed for watching
+```
+
+The script wires everything itself: reasoning server (uv), demo page over http,
+a **test-rig extension copy** with `host_permissions: ["<all_urls>"]`
+(`captureVisibleTab` needs `activeTab` granted by a genuine user gesture, which
+automation cannot produce — the shipped manifest stays strict), Chromium launch
+(auto-detects the Playwright cache; `CHROME_BIN` to override), and CDP driving via
+[`eval/e2e_browser.py`](eval/e2e_browser.py). Final frame lands in `eval/out_e2e.png`.
+
 > **Browser runtime note.** The in-browser WebGPU shader and `chrome.*` plumbing are
-> verified by hand on the demo page; the CPU vision core (identical algorithm) is what
-> the Node evaluator scores. Firefox is shimmed and documented but not verified — see the
-> README "Browser support" section.
+> verified by the E2E harness above and by hand on the demo page; the CPU vision core
+> (identical algorithm) is what the Node evaluator scores. Firefox is shimmed and
+> documented but not verified — see the README "Browser support" section.
 
 ---
 
