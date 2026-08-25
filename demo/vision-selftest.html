@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vision Self-Test — WebGPU / CPU / Neural</title>
+<style>
+  :root { color-scheme: dark; --bg:#0e1116; --panel:#161b22; --line:#2b333d;
+          --ink:#e6edf3; --dim:#9aa7b4; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px; background:var(--bg); color:var(--ink);
+         font:15px/1.5 ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--dim); margin:0 0 20px; }
+  .wrap { display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:960px; }
+  @media (max-width:760px){ .wrap{ grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }
+  canvas { width:100%; height:auto; background:#fff; border-radius:6px; border:1px solid var(--line); }
+  .row { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:0; }
+  .k { color:var(--dim); }
+  .v { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; text-align:right; }
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)} .accent{color:var(--accent)}
+  .verdict { margin-top:16px; padding:12px 14px; border-radius:8px; border:1px solid var(--line);
+             background:#0d1117; font-family:ui-monospace,Consolas,monospace; font-size:13px; white-space:pre-wrap; }
+  button { margin-top:16px; background:var(--accent); color:#04121f; border:0; border-radius:7px;
+           padding:9px 16px; font-weight:600; cursor:pointer; font-size:14px; }
+  .hint { color:var(--dim); font-size:13px; margin-top:14px; }
+  code { background:#0d1117; padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+  <h1>On-device Vision Self-Test</h1>
+  <p class="sub">Loads your real <code>extension/lib/vision/*.js</code> and reports which backend actually runs.</p>
+
+  <div class="wrap">
+    <div class="card">
+      <h2>Test scene &amp; detections</h2>
+      <canvas id="cv" width="340" height="240"></canvas>
+      <div class="hint">Green = detected FACE · Orange = detected SIGNATURE. Boxes are drawn from the
+        detector's real output.</div>
+    </div>
+
+    <div class="card">
+      <h2>Runtime report</h2>
+      <div class="row"><span class="k">navigator.gpu present</span><span class="v" id="r-gpu">…</span></div>
+      <div class="row"><span class="k">detector backend used</span><span class="v" id="r-backend">…</span></div>
+      <div class="row"><span class="k">GPU self-test (4-px probe)</span><span class="v" id="r-selftest">…</span></div>
+      <div class="row"><span class="k">neural hook (ONNX/TF.js)</span><span class="v" id="r-neural">…</span></div>
+      <div class="row"><span class="k">detector ready</span><span class="v" id="r-ready">…</span></div>
+      <div class="row"><span class="k">faces / signatures found</span><span class="v" id="r-dets">…</span></div>
+      <div class="verdict" id="verdict">running…</div>
+      <button id="rerun">Re-run test</button>
+    </div>
+  </div>
+
+  <!-- Load the REAL shipped modules (neural first so the detector can see the hook). -->
+  <script src="../extension/lib/vision/vision-neural.js"></script>
+  <script src="../extension/lib/vision/vision-detector.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const set = (id, txt, cls) => { const el = $(id); el.textContent = txt; el.className = "v" + (cls ? " " + cls : ""); };
+
+    // Paint a synthetic scene: a skin-tone face + a wide sparse dark "signature" on white.
+    function paintScene(ctx) {
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 340, 240);
+      // FACE — filled skin-colored ellipse (passes the YCbCr/RGB skin rule)
+      ctx.fillStyle = "rgb(210,150,100)";
+      ctx.beginPath(); ctx.ellipse(95, 95, 46, 56, 0, 0, Math.PI * 2); ctx.fill();
+      // SIGNATURE — wide, short, sparse dark strokes with a pen-lift gap
+      ctx.strokeStyle = "#0a0a0a"; ctx.lineWidth = 2.4; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(175, 175);
+      ctx.bezierCurveTo(195, 150, 210, 195, 232, 168);
+      ctx.bezierCurveTo(245, 150, 255, 185, 268, 170);
+      ctx.stroke();
+      ctx.beginPath(); // second stroke after a gap
+      ctx.moveTo(276, 172); ctx.bezierCurveTo(288, 158, 300, 182, 312, 166); ctx.stroke();
+    }
+
+    function drawBoxes(ctx, dets) {
+      for (const d of dets) {
+        const [x, y, w, h] = d.bbox;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = d.pii_type === "face" ? "#3fb950" : "#d29922";
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.font = "11px monospace";
+        ctx.fillText(`${d.pii_type} ${d.confidence}`, x, Math.max(10, y - 3));
+      }
+    }
+
+    async function run() {
+      const cv = $("cv"), ctx = cv.getContext("2d");
+      paintScene(ctx);
+
+      const hasGpu = !!(navigator.gpu);
+      set("r-gpu", hasGpu ? "yes" : "no", hasGpu ? "ok" : "warn");
+
+      // init() probes WebGPU, runs the self-test, and probes the neural hook.
+      const info = await PBA.vision.init();
+      set("r-backend", info.backend, info.backend === "webgpu" ? "ok" : "warn");
+      set("r-neural", info.neural ? "active" : "dormant (not vendored)", info.neural ? "ok" : "accent");
+      set("r-ready", String(info.ready), info.ready ? "ok" : "bad");
+
+      // The self-test result is exactly why backend === 'webgpu' only when the GPU
+      // output matched the CPU output on the 4-pixel probe.
+      const selftest = hasGpu ? (info.backend === "webgpu" ? "PASSED" : "failed → CPU") : "n/a (no GPU)";
+      set("r-selftest", selftest, info.backend === "webgpu" ? "ok" : "warn");
+
+      // Run the FULL browser path (decode → classify on GPU or CPU → region filters).
+      const res = await PBA.vision.detect(cv.toDataURL(), { dpr: 1 });
+      drawBoxes(ctx, res.detections);
+      const faces = res.detections.filter((d) => d.pii_type === "face").length;
+      const sigs = res.detections.filter((d) => d.pii_type === "signature").length;
+      set("r-dets", `${faces} face · ${sigs} sig`, faces > 0 ? "ok" : "warn");
+
+      let v = "";
+      if (!hasGpu) {
+        v = "ℹ️  WebGPU NOT available in this context.\n   → Detection ran on the CPU fallback (correct, just not GPU-accelerated).\n"
+          + "   Fix: use Chrome/Edge 121+. If you opened this via file://, serve it over\n"
+          + "   http://localhost instead (some builds hide WebGPU on file://). See chrome://gpu.";
+      } else if (info.backend === "webgpu") {
+        v = "✅  WebGPU is WORKING.\n   Shader compiled, the 4-pixel self-test matched the CPU classifier,\n"
+          + "   and the GPU path was used for the detection above.";
+      } else {
+        v = "⚠️  navigator.gpu exists but the GPU path did not pass its self-test\n"
+          + "   (or the device request failed) → it safely fell back to CPU. Detection is still correct.";
+      }
+      v += info.neural
+        ? "\n\n✅  Neural hook ACTIVE (a model is vendored)."
+        : "\n\nℹ️  Neural hook DORMANT — no model vendored (expected). A console error about\n   'transformers.min.js' failing to load is normal and proves it is correctly absent.\n   To activate it, follow the VENDORING steps in vision-neural.js.";
+      $("verdict").textContent = v;
+    }
+
+    $("rerun").addEventListener("click", run);
+    run();
+  </script>
+</body>
+</html>
