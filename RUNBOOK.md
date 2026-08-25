@@ -83,7 +83,7 @@ shell (or leave them unset).
 
 ## 1. Reasoning server
 
-**Fastest — one command** (creates the venv, installs `requirements.txt`, starts uvicorn; safe to re-run — only the first run installs):
+**Fastest — one command** (restores the exact environment from `uv.lock` via [uv](https://docs.astral.sh/uv/), starts uvicorn; safe to re-run — only the first run syncs). No uv? The scripts fall back to plain venv + pip automatically.
 
 | OS | From the `server/` folder |
 |---|---|
@@ -92,7 +92,17 @@ shell (or leave them unset).
 
 Extra args pass straight through to uvicorn (e.g. `.\run.ps1 --port 9000`); force a dependency refresh with `-Reinstall` (PowerShell) or `PBA_REINSTALL=1` (bash). If PowerShell refuses to run the script (execution policy), use `powershell -ExecutionPolicy Bypass -File run.ps1`.
 
-<details><summary><b>Or do it step by step</b> (same result, manual)</summary>
+Run the offline verification suite the same way: `uv run python selftest.py` (or `.venv\Scripts\python selftest.py`).
+
+Manual equivalent (uv):
+
+```bash
+cd server
+uv sync            # creates .venv from uv.lock (add --reinstall to refresh)
+uv run uvicorn main:app --port 8000
+```
+
+<details><summary><b>Or do it step by step without uv</b> (same result, manual)</summary>
 
 **Windows (PowerShell):**
 
@@ -100,7 +110,7 @@ Extra args pass straight through to uvicorn (e.g. `.\run.ps1 --port 9000`); forc
 cd server
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements.txt   # mirror of pyproject.toml for non-uv setups
 python -m uvicorn main:app --port 8000
 ```
 
@@ -109,7 +119,7 @@ python -m uvicorn main:app --port 8000
 ```bash
 cd server
 python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt   # mirror of pyproject.toml for non-uv setups
 python -m uvicorn main:app --port 8000
 ```
 
