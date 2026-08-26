@@ -51,7 +51,7 @@ function renderLog(log) {
     let line = `<span class="k">${e.kind || e.cmd}</span> `;
     if (e.kind === "plan") line += `[${e.status}] ${e.reasoning || ""} ${JSON.stringify(e.actions || [])}`;
     else if (e.kind === "action") line += `${JSON.stringify(e.action)} → ${JSON.stringify(e.result && e.result.result || e.result)}`;
-    else if (e.kind === "receipt") line += `detected=${e.receipt.detected} redacted=${e.receipt.redacted} risk=${e.receipt.residual_risk}`;
+    else if (e.kind === "receipt") line += `detected=${e.receipt.detected} redacted=${e.receipt.redacted} risk=${e.receipt.residual_risk} ${JSON.stringify(e.receipt.categories || {})}`;
     else if (e.kind === "rejected") line += `⛔ ${e.reason}`;
     else if (e.kind === "error") line += `❌ ${e.error}`;
     else line += JSON.stringify(e).slice(0, 200);

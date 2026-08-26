@@ -69,18 +69,18 @@ const MODELS = [
     sizeWarnMB: 20,
   },
   {
-    // Handwritten-signature detector (YOLOv11-nano). Ships a ready ONNX, pulled
-    // directly at build time — no local export step. Single-class ("signature")
-    // Ultralytics detect head → the SAME [1,5,N] layout the face model uses, so
-    // vision-neural.js decodes it with the SAME decodeYolo (scoreIndex 4).
-    // LICENSE: MIT (permissive — no copyleft). Trained on ChiSig (handwritten
-    // signature *regions*); signatures are script-agnostic ink shapes, so it
-    // generalizes while being far more precise than the old classical heuristic.
+    // Handwritten-signature detector (tech4humans YOLOv8s). Copied from the local
+    // export in eval/models/ (same pattern as the face model) — the ChiSig YOLOv11n
+    // weight that used to be pulled from HF was empirically blind to Latin signatures
+    // (probe max 0.004), so it was swapped out 2026-08-26. Single-class ("signature")
+    // Ultralytics detect head → the SAME [1,5,N] layout the face model uses, decoded
+    // by the SAME decodeYolo (scoreIndex 4). LICENSE: AGPL-3.0 (Ultralytics-derived,
+    // copyleft — accepted for now; revisit before any closed-source distribution).
+    // Source repo: tech4humans/yolov8s-signature-detector on Hugging Face.
     id: "yolo-signature",
-    hfRepo: "liberty666/yolo11n-chinese-signature",
-    files: [["yolo11n_signature.onnx", "model.onnx"]], // repoPath → destRel under models/yolo-signature/
+    localSource: path.join(ROOT, "eval", "models", "sig-tech4humans.onnx"),
     destRel: "model.onnx", // → extension/models/yolo-signature/model.onnx
-    sizeWarnMB: 15, // YOLOv11n fp32 ONNX ≈ 10.5 MB (comparable to the nano face model)
+    sizeWarnMB: 50, // YOLOv8s fp32 ONNX ≈ 44.6 MB (larger than the nano models)
   },
 ];
 
