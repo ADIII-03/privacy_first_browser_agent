@@ -19,7 +19,7 @@ A living checklist of **every build step**, its **testing status**, what is **do
 ## 0. Status snapshot (now)
 
 - **Pipeline:** detect → fuse → decide → redact → reason → act — **all stages implemented on‑device.**
-- **Backends:** classical CV core (always on) + WebGPU accelerator (self‑verified) + optional YOLOS‑tiny/ONNX neural hook (vendored, off by default).
+- **Backends:** classical CV core (always on) + WebGPU accelerator (self‑verified) + **neural stack ON by default** — `yolov8n-face` (union) + `tech4humans` YOLOv8s‑signature (neural‑only) via raw onnxruntime‑web (WebGPU→WASM), ~674 ms cold warm‑up. Legacy transformers.js YOLOS‑tiny retained as a fallback entry only.
 - **Server:** FastAPI, `mock` planner default (zero deps); `vlm` adapter ready.
 - **Eval scorecard** (`node eval/run_all.js`, on shipped code):
 
@@ -30,6 +30,8 @@ A living checklist of **every build step**, its **testing status**, what is **do
 | 3 | Redaction precision | 20% | coverage‑recall **1.00**, box‑P 1.00 | ✅ |
 | 4 | Client resource (proxy) | 20% | ≈**4,700 chars/ms**, p95 ≈2.7 ms | ✅ |
 | 5 | End‑to‑end latency | 15% | `/plan` p50 ≈**16 ms** (mock) | ✅ |
+
+> The scorecard is the **automated** harness (`run_all.js`) over synthetic labeled scenes — it exercises the classical CV core + fusion + policy (all **unchanged** by the neural work). The **neural** face + signature detectors run only in‑browser / via offline probes, so their accuracy is validated separately (§6) and **not yet folded into this scorecard** — tracked as a labeled real‑world set in §14. Real‑page testing also exposed a gap the synthetic scenes don't: the *classical* signature heuristic over‑fires badly on body text (33–84 false boxes/frame), which is exactly why signatures moved to **neural‑only** (§4, §6).
 
 ---
 
@@ -68,7 +70,10 @@ A living checklist of **every build step**, its **testing status**, what is **do
 - [x] FACE: YCbCr skin + RGB daylight rule → cell grid → 8‑connected components → geometry priors
 - [x] SIGNATURE: dark‑ink‑on‑light + horizontal morphological closing (`dilateXInk`) → wide/short/sparse geometry; dark‑theme suppression
 - [x] Device‑px → CSS‑px conversion (÷ dpr) so boxes fuse with DOM signals
-  - Test: ✅ `vision_eval.js` (faces P/R/F1 = 1.0; signatures R = 1.0)
+  - Test: ✅ `vision_eval.js` (faces P/R/F1 = 1.0; signatures R = 1.0 **on synthetic scenes**)
+- [x] **Runtime fusion with the neural stack** (§6): FACES **union‑merge** classical + neural; SIGNATURES are **neural‑only** — while the signature model is loaded, `detect()` drops the classical signature boxes (gated on `visionNeural.covers(SIGNATURE)`). The classical signature code **stays** and still ships as the **fallback** when no model is loaded.
+  - Why: real‑page testing showed the classical signature heuristic carpet‑bombs text (33–84 FP/frame) and localizes poorly; the neural model is high‑precision. The synthetic `vision_eval.js` (R = 1.0) doesn't surface this over‑firing — see §14.
+  - Test: 🧪 in‑browser on real pages (Kohli / Turing wiki) — classical suppression + neural fire confirmed via the offscreen debug log
 
 ---
 
@@ -82,18 +87,23 @@ A living checklist of **every build step**, its **testing status**, what is **do
 
 ---
 
-## 6. Perception — Neural hook (YOLOS‑tiny / ONNX) + vendoring
+## 6. Perception — Neural detectors (ONNX YOLO) + vendoring
 
-- [x] `vision-neural.js` — transformers.js/ONNX Runtime Web adapter; **no‑op until weights vendored**; unions with (never replaces) CV core
-- [x] `REGISTRY` with `Xenova/yolos-tiny` (q8, WebGPU→WASM fallback, `minScore 0.5`), `person → FACE` mapping
-- [x] `init()` + warm‑up frame (hides cold‑start) + `detect()` returning device‑px boxes
-- [x] `id_document` PII category plumbed end‑to‑end (protocol → policy → redaction)
-- [x] `tools/vendor-vision.mjs` — one‑command offline vendoring (pinned transformers 4.2.0 + onnxruntime‑web); `--check` integrity (ONNX/WASM magic bytes); Windows tar/path fixes
-- [x] `docs/VENDORING.md` — install, swap‑model recipe, candidates (BlazeFace, YOLOv8‑face, MIDV‑500)
-  - Test: ✅ `neural_smoke.js` proves vendored stack **loads + runs offline** + well‑formed output (requires `vendor-vision.mjs` + `npm i @huggingface/transformers`)
-- [~] **Placeholder model only** — YOLOS is COCO (no `face` class); `person→FACE` is coarse/over‑broad
-- [ ] Swap in dedicated **face** detector (BlazeFace / YOLOv8‑face ONNX) — plumbing ready, model TODO ⛔
-- [ ] Add **ID‑document** detector (MIDV‑500 fine‑tune) — category ready, model TODO ⛔
+- [x] `vision-neural.js` — refactored into a **multi‑model stack**: `ACTIVE_MODELS = ["yolov8n-face", "yolo-signature"]`, per‑model records in a `Map` (each loads + **fails independently**, fail‑open), `detect()` runs them **sequentially** on the shared offscreen frame, and a `covers(piiType)` API tells the classical layer which categories are handled neurally
+- [x] **RAW onnxruntime‑web runtime** (`runtime:"onnx-yolo"`) — letterbox → NCHW → YOLO decode (`scoreIndex 4`) → NMS; handles both `[1,C,N]` and `[1,N,C]` heads; pre/post identical to the eval probes so Node and browser agree
+- [x] **FACE — `yolov8n-face` (ACTIVE):** dedicated face detector, tight boxes, ~33–46 ms; **union‑merged** with the classical core. Validated by `eval/face_probe.js` + in‑browser (0.84–0.87 on real pages)
+- [x] **SIGNATURE — `tech4humans/yolov8s-signature-detector` (ACTIVE, neural‑only):** Latin/Western handwritten‑signature detector, single‑class `[1,5,8400]` head (same decode as the face model); **replaces** the classical heuristic while loaded via the `covers(SIGNATURE)` drop. Validated by `eval/signature_probe.js` (~0.77–0.80 on Kohli's real sig, **0 FPs** on text) + in‑browser
+  - ⚠️ **LICENSE: AGPL‑3.0** (Ultralytics‑derived weight) — **accepted for now**; revisit before any closed‑source distribution
+- [x] `id_document` PII category plumbed end‑to‑end (protocol → policy → redaction) — **detector still TODO**
+- [x] `tools/vendor-vision.mjs` — offline vendoring; face + signature vendor from a **`localSource`** (`eval/models/*.onnx`); `--check` integrity (ONNX/WASM magic bytes); Windows tar/path fixes
+- [x] `eval/face_probe.js`, `eval/signature_probe.js`, `eval/show_boxes.js` — Node probes (onnxruntime‑node + sharp) that score any candidate weight the same way the browser path does before it's wired in
+- [x] `docs/VENDORING.md` — install + swap‑model recipe
+  - Test: ✅ probes runnable offline; 🧪 both models load + run in‑browser (popup vision panel, ~674 ms cold warm‑up on WebGPU)
+- [~] **Weights are `.gitignore`'d** → not committed; a fresh clone must run `node tools/vendor-vision.mjs` (which copies from `eval/models/`, themselves local‑only). Packaging the weights for graders/teammates = open item ⛔
+- [~] **Faint / small signatures missed** — e.g. Alan Turing's wiki sig (~0.07, below the 0.35 floor once the viewport downscales to 640); classical no longer masks this. Fix path = higher‑res capture / region‑upscale, **not** the classical noise ⛔
+- [ ] **ID‑document** detector (MIDV‑500 fine‑tune or similar) — category ready, model TODO ⛔
+- [ ] **OCR** for text baked into images (IDs, screenshots) — extends fusion; model TODO ⛔
+- [ ] Legacy `Xenova/yolos-tiny` (transformers.js) kept as a **fallback REGISTRY entry only** — not in `ACTIVE_MODELS`
 
 ---
 
@@ -129,7 +139,7 @@ A living checklist of **every build step**, its **testing status**, what is **do
   - Test: ⛔ in‑browser only (MV3 plumbing not in CI); 🧪 demo
 - [x] `offscreen.js` / `offscreen.html` — VISION + COMPOSE host (canvas + WebGPU, off main thread)
   - Test: ⛔ Chromium‑only, manual
-- [x] `popup.html` / `popup.js` — task input + **live privacy receipt** (detected/redacted/screenshot‑sent/residual‑risk) + log
+- [x] `popup.html` / `popup.js` — task input + **live privacy receipt** (detected/redacted + **per‑category breakdown**/screenshot‑sent/residual‑risk) + **on‑device vision panel** (active neural models, execution provider, cold warm‑up ms) + log
   - Test: 🧪 manual
 
 ---
@@ -153,6 +163,8 @@ A living checklist of **every build step**, its **testing status**, what is **do
 - [x] `fixtures/screen_truth.js` — synthetic labeled scenes + grounding sample
 - [x] `vision_eval.js` (#1), `pii_eval.js` (#2), `redaction_eval.js` (#3), `latency_bench.js` (#4/#5), `neural_smoke.js` (neural)
   - Test: ✅ all runnable via `node eval/run_all.js` (Node 18+)
+- [x] `face_probe.js`, `signature_probe.js`, `show_boxes.js` — offline **model** probes (onnxruntime‑node + sharp): measure a candidate weight's recall / precision / latency exactly as the browser path does, and draw the boxes for eyeballing
+  - Test: ✅ e.g. `node eval/signature_probe.js --model <path> <img>` (needs `npm i onnxruntime-node sharp` in `eval/`)
 - [ ] CI wiring (GitHub Actions) to run `run_all.js` on push ⛔
 
 ---
@@ -178,13 +190,17 @@ A living checklist of **every build step**, its **testing status**, what is **do
 
 ## 14. Future work — add & test
 
-- [ ] Dedicated face detector model → drop into `REGISTRY`, re‑run `neural_smoke.js` + add accuracy metric
-- [ ] ID‑document detector (MIDV‑500) → add scene truth + redaction test
+- [x] ~~Dedicated face detector model~~ → **`yolov8n-face` shipped** (§6)
+- [x] ~~Signature detector~~ → **`tech4humans` YOLOv8s shipped, neural‑only** (§6)
+- [ ] **Labeled real‑world test set** for the neural stack (pages with & without sigs, varied sizes / scripts) → quantify face + signature precision/recall and fold into the scorecard
+- [ ] **Higher‑res capture / region‑upscale** so faint sigs reach the 640 model large enough to score (recovers the Turing‑style miss)
+- [ ] **Resolve AGPL** on the signature weight (accept project‑wide AGPL, or find a permissive / non‑Ultralytics detector)
+- [ ] **ID‑document** detector (MIDV‑500) → add scene truth + redaction test
+- [ ] **OCR** pass for text baked into images → extend fusion + tests
 - [ ] Production vault (encrypted `chrome.storage` + consent prompt) → add unit tests
 - [ ] Overlay‑based destructive confirmation (replace `window.confirm`) → manual + snapshot test
 - [ ] Firefox background‑page vision host → port + verify vision parity
 - [ ] CI pipeline running full eval scorecard on every PR
-- [ ] Optional: OCR pass for text baked into images → extend fusion + tests
 
 ---
 
@@ -194,13 +210,12 @@ A living checklist of **every build step**, its **testing status**, what is **do
 # Full scorecard (Metrics 1–5) — no model, no browser needed
 node eval/run_all.js
 
-# Neural stack executes offline on vendored YOLOS‑tiny weights
-node tools/vendor-vision.mjs                 # 1. vendor (once, ~10–30 MB)
-npm install --prefix eval @huggingface/transformers@4.2.0   # 2. Node runtime
-node eval/neural_smoke.js                    # 3. smoke test
-
-# Verify vendored artifacts present + integrity
-node tools/vendor-vision.mjs --check
+# Neural stack: vendor the on‑device weights (face + signature), then probe them offline
+node tools/vendor-vision.mjs                 # 1. vendor from eval/models/ (face ~12 MB + sig ~45 MB)
+node tools/vendor-vision.mjs --check         #    verify artifacts present + integrity
+cd eval && npm i onnxruntime-node sharp      # 2. Node runtime for the probes
+node eval/face_probe.js models/yolov8n-face/model.onnx person.png
+node eval/signature_probe.js --model ../extension/models/yolo-signature/model.onnx signature.png
 
 # Server (mock) + latency
 cd server && pip install -r requirements.txt && uvicorn main:app --port 8000
@@ -211,4 +226,4 @@ node eval/latency_bench.js
 
 ---
 
-_Last updated: 2026‑08‑25 · Reflects shipped code at branch `main` (through “edge cases fixed”, neural‑vision vendoring + `id_document`)._
+_Last updated: 2026‑08‑26 · Branch `verify` — neural stack now **active by default**: `yolov8n-face` (union) + `tech4humans` YOLOv8s‑signature (neural‑only, replaces classical while loaded), validated in‑browser. Server residual‑PII 422 tripwire fixed. Pending PR._
