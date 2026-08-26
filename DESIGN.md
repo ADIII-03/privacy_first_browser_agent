@@ -159,13 +159,16 @@ after a runtime self-test** (`_verifyGpu`) reproduces the CPU classification on 
 WebGPU path with confidence even though WebGPU cannot be exercised in a headless Node
 CI.
 
-**(c) Optional neural hook — `vision-neural.js`.** A code-complete adapter for a real
-object detector (`transformers.js` / ONNX Runtime Web, e.g. YOLOS-tiny) that is
-*dynamically imported from a vendored local path* and is a no-op (`available:false`)
-until the weights are vendored. When present it runs in addition to the CV core and
-its boxes are merged before coordinate conversion. It is optional by design: the
-extension's CSP is `script-src 'self' 'wasm-unsafe-eval'`, so no CDN import is
-possible and the built-in CV core must stand alone.
+**(c) Neural detectors — `vision-neural.js`.** Two ONNX Runtime Web detectors run in
+the offscreen document once weights are vendored (`node tools/vendor-vision.mjs`):
+`yolov8n-face` → FACE and `yolo-signature` → SIGNATURE, both YOLO detect heads decoded
+by a shared `decodeYolo`. Faces **union** with the CV core (recall-leaning); signatures
+**replace** the classical heuristic, which over-fired on text (a receipt page produced
+`signature: 51`). Each model loads independently and fail-open — a missing one simply
+falls back to the classical core for its category. The extension's CSP is
+`script-src 'self' 'wasm-unsafe-eval'`, so no CDN import is possible: weights are
+vendored at build time, never fetched at runtime. Full deep-dive:
+[`docs/VISION.md`](docs/VISION.md).
 
 **Availability guarantee.** `init()` probes `navigator.gpu` but **always** ends
 `ready:true`, because the CPU core is always available. This matters for privacy: the
@@ -189,7 +192,8 @@ on purpose: in a privacy system, the union of "might be PII" is the safe set.
 redaction **method** and a minimum confidence:
 
 - **FACE** → `BLACKOUT`, reversible-OK, minConf 0.5.
-- **SIGNATURE** → `BLACKOUT`, non-reversible, minConf 0.5.
+- **SIGNATURE** → `BLACKOUT`, non-reversible, minConf 0.35 (kept ≤ the signature model's
+  score floor so no model hit is silently dropped — see [`docs/VISION.md`](docs/VISION.md) §5).
 - Text categories → `TOKENIZE` (replace with `‹email_1›`-style placeholders so the
   model can still reason about *structure* without seeing *values*).
 
@@ -374,8 +378,10 @@ just technically private, but **legally compliant by design**.
   (b) the GPU self-verification probe that falls back on any mismatch, (c) syntax/byte
   checks, and (d) the manual demo page. We do not claim in-browser runtime numbers we
   did not observe.
-- **The neural detector is optional and off until weights are vendored** (CSP forbids
-  CDN loads). The built-in CV core is the default and is what the metric scores.
+- **The neural YOLO detectors activate once weights are vendored** (one command; CSP
+  forbids CDN loads, so nothing is fetched at runtime). The Node metric scores the
+  always-on CV core; the neural models (faces + signatures) are verified in-browser and
+  via `eval/face_probe.js`, not in the Node metric. See [`docs/VISION.md`](docs/VISION.md).
 - **The CV detector is intentionally conservative** — tuned for the fail-closed
   direction (rather over-redact a paragraph edge than miss a signature). This shows up
   as over-redaction in Metric #3 and the occasional split-box in Metric #1, both of
