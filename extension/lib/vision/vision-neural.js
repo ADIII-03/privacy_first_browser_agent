@@ -60,15 +60,19 @@
       warmup: true,
       note: "dedicated face detector; ~33-46ms, tight boxes, no COCO hallucinations.",
     },
-    // ── signature detector, raw onnxruntime-web (REPLACES the classical heuristic) ──
-    // YOLOv11n single-class detect head → output [1,5,8400] = 4 box + 1 score
-    // (index 4). SAME [1,5,N] shape and decode as the face model. MIT-licensed,
-    // ChiSig-trained (handwritten signature regions); precise where the classical
-    // "wide+short+sparse dark ink" heuristic drowned in text false-positives.
+    // ── signature detector, raw onnxruntime-web (REPLACES the classical heuristic while loaded) ──
+    // YOLOv8s single-class detect head → output [1,5,8400] = 4 box + 1 score
+    // (index 4). SAME [1,5,N] shape and decode as the face model. Weight:
+    // tech4humans/yolov8s-signature-detector — trained on Latin/Western handwritten
+    // signatures (AGPL-3.0, accepted for now; revisit before release). Swapped in
+    // 2026-08-26, replacing the ChiSig YOLOv11n weight that was empirically blind to
+    // Latin script. HIGH-PRECISION in-browser (Kohli wiki sig 0.79, ZERO text false-
+    // positives); while it's loaded, vision-detector.js drops the classical sig boxes
+    // (which carpet-bomb body text 33-77 FP/frame). Classical = fallback when unloaded.
     "yolo-signature": {
       runtime: "onnx-yolo",
       modelFile: "models/yolo-signature/model.onnx",
-      inputName: "images",         // confirmed via eval/inspect_onnx.cjs
+      inputName: "images",         // confirmed: tech4humans export input tensor = "images"
       size: 640,                   // letterbox square
       scoreIndex: 4,               // channel holding the signature confidence
       minScore: 0.35,              // tune: ↑ fewer FPs on web pages, ↓ more recall
@@ -76,7 +80,7 @@
       category: PII.SIGNATURE,
       ep: ["webgpu", "wasm"],
       warmup: true,
-      note: "handwritten-signature detector; single class → SIGNATURE; replaces classical.",
+      note: "signature detector (tech4humans YOLOv8s); single class → SIGNATURE; REPLACES classical while loaded (classical = fallback).",
     },
     // ── LEGACY fallback: transformers.js YOLOS-tiny (superseded, not default) ──
     // COCO has no 'face', so full-person boxes map to a coarse FACE region. Slow
@@ -93,6 +97,13 @@
     },
   };
 
+  // yolo-signature ACTIVE 2026-08-26 with the tech4humans YOLOv8s weight (the prior ChiSig
+  // YOLOv11n weight was empirically blind to Latin signatures — probe max 0.004). In-browser
+  // data: tech4humans is high-precision (Kohli sig 0.79, ZERO text false-positives across 6
+  // frames) but misses small/faint ink (Turing 0.07). It REPLACES the classical detector for
+  // signatures: covers(SIGNATURE)=true makes vision-detector.js drop the classical sig boxes,
+  // which carpet-bomb body text (33-77 FP/frame) and localize poorly. Classical still runs as
+  // a fallback when no model is loaded. Re-validate any swap: node eval/signature_probe.js --model <path>
   const ACTIVE_MODELS = ["yolov8n-face", "yolo-signature"];
 
   const ORT_ESM = "lib/vendor/ort/ort-webgpu-api.mjs";

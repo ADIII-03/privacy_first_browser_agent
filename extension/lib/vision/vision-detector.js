@@ -431,18 +431,21 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     // Optional neural detections (faces + signatures via vendored YOLO models), merged in.
     if (G.PBA.visionNeural && G.PBA.visionNeural.available) {
       try {
-        // SIGNATURES: the neural model REPLACES the classical heuristic when vendored.
-        // That heuristic (wide + short + sparse dark ink) over-fires massively on text —
-        // underlines, rules and text lines all match its shape, e.g. 51 phantom
-        // "signatures" on a receipt — so once the model is loaded we drop the classical
-        // signature boxes and keep only the model's. Faces stay UNION-merged (recall-
-        // leaning by design). If the signature model isn't vendored, covers() is false
-        // and the classical branch still runs — no coverage loss (fail-safe).
-        const covers = G.PBA.visionNeural.covers;
-        if (typeof covers === "function" && covers(PII.SIGNATURE)) {
-          detections = detections.filter((d) => d.pii_type !== PII.SIGNATURE);
-        }
+        // SIGNATURES: NEURAL-ONLY (the model REPLACES the classical heuristic while it's
+        // loaded), decided 2026-08-26 from in-browser data. tech4humans is high-precision
+        // (0.79 on Kohli's real sig, ZERO false-positives on text across 6 frames), whereas
+        // the classical heuristic CARPET-BOMBS — 33-77 false "signature" boxes per frame on
+        // body text, and localizes poorly even when it does hit. Unioning the two flooded the
+        // page with redactions (hurting BOTH redaction-precision AND the agent's view of the
+        // page). So while the neural model covers SIGNATURE we DROP the classical sig boxes.
+        // The classical code STAYS (regionsFromCls still computes them) and still SHIPS as a
+        // FALLBACK when the model isn't loaded (covers()=false). Faces remain union-merged.
+        // Known gap: small/faint sigs the model misses (Turing ~0.07) — to be recovered via
+        // higher-res capture, NOT the classical noise.
         const extra = await G.PBA.visionNeural.detect(image);
+        // Neural-only for signatures: drop the classical sig boxes while the model covers it.
+        if (G.PBA.visionNeural.covers?.(PII.SIGNATURE))
+          detections = detections.filter((d) => d.pii_type !== PII.SIGNATURE);
         if (Array.isArray(extra)) detections = detections.concat(extra);
       } catch (_) {}
     }

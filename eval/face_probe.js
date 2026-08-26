@@ -22,12 +22,14 @@
  *                                                  ^conf      ^nms-iou (both optional)
  */
 async function main() {
-  const modelPath = process.argv[2];
-  const imgPath = process.argv[3];
-  const CONF = process.argv[4] ? Number(process.argv[4]) : 0.35;
-  const IOU = process.argv[5] ? Number(process.argv[5]) : 0.45;
+  const args = process.argv.slice(2).filter((a) => a !== "--no-show");
+  const SHOW = !process.argv.includes("--no-show"); // pop up the image with boxes (default on)
+  const modelPath = args[0];
+  const imgPath = args[1];
+  const CONF = args[2] ? Number(args[2]) : 0.35;
+  const IOU = args[3] ? Number(args[3]) : 0.45;
   if (!modelPath || !imgPath) {
-    console.error("Usage: node face_probe.js <model.onnx> <image.png|jpg> [conf=0.35] [nms_iou=0.45]");
+    console.error("Usage: node face_probe.js <model.onnx> <image.png|jpg> [conf=0.35] [nms_iou=0.45] [--no-show]");
     process.exit(1);
   }
 
@@ -36,6 +38,7 @@ async function main() {
   catch { console.error("Missing dep. In eval/ run:  npm i onnxruntime-node"); process.exit(1); }
   try { sharp = require("sharp"); }
   catch { console.error("Missing dep. In eval/ run:  npm i sharp"); process.exit(1); }
+  const { showBoxes } = require("./show_boxes");
 
   const SIZE = 640; // standard YOLOv8 input. If your model rejects this, paste me the error.
 
@@ -124,6 +127,8 @@ async function main() {
   console.log(`\n${keep.length} face(s) after NMS  (conf>=${CONF}, nms_iou<${IOU}; ${cand.length} raw over threshold):`);
   keep.slice(0, 20).forEach((b, i) =>
     console.log(`  #${i}  score=${b.score.toFixed(2)}  box=[${Math.round(b.x)}, ${Math.round(b.y)}, ${Math.round(b.w)}, ${Math.round(b.h)}]`));
+
+  if (SHOW) await showBoxes(sharp, imgPath, keep, { conf: CONF });
 
   console.log("\nCompare vs YOLOS-tiny:");
   console.log("  (1) inference ms  — expect FAR below ~1000ms (CNN vs transformer).");
