@@ -57,13 +57,30 @@ const ORT_API_CANDIDATES = [
 const ORT_API_DEST = path.join(VENDOR_ORT, "ort-webgpu-api.mjs");
 
 // Model registry — mirrors REGISTRY in extension/lib/vision/vision-neural.js.
-// localSource → copied in (not fetched); HF `files` kept for any future remote model.
+// localSource → copied in (not fetched); HF `files` → downloaded at build time
+// (fine — the CSP only forbids fetching at RUNTIME; vendored weights are same-origin).
+// `id` is the local dir under extension/models/; `hfRepo` (optional) is the source
+// repo, kept separate so a clean local id can pull from an org/name HF path.
 const MODELS = [
   {
     id: "yolov8n-face",
     localSource: path.join(ROOT, "eval", "models", "yolov8n-face.onnx"),
     destRel: "model.onnx", // → extension/models/yolov8n-face/model.onnx
     sizeWarnMB: 20,
+  },
+  {
+    // Handwritten-signature detector (YOLOv11-nano). Ships a ready ONNX, pulled
+    // directly at build time — no local export step. Single-class ("signature")
+    // Ultralytics detect head → the SAME [1,5,N] layout the face model uses, so
+    // vision-neural.js decodes it with the SAME decodeYolo (scoreIndex 4).
+    // LICENSE: MIT (permissive — no copyleft). Trained on ChiSig (handwritten
+    // signature *regions*); signatures are script-agnostic ink shapes, so it
+    // generalizes while being far more precise than the old classical heuristic.
+    id: "yolo-signature",
+    hfRepo: "liberty666/yolo11n-chinese-signature",
+    files: [["yolo11n_signature.onnx", "model.onnx"]], // repoPath → destRel under models/yolo-signature/
+    destRel: "model.onnx", // → extension/models/yolo-signature/model.onnx
+    sizeWarnMB: 15, // YOLOv11n fp32 ONNX ≈ 10.5 MB (comparable to the nano face model)
   },
 ];
 
@@ -74,7 +91,9 @@ function hr(bytes) {
 }
 
 async function downloadTo(url, dest) {
-  const res = await fetch(url, { redirect: "follow" });
+  // A UA header avoids a class of HF/CDN 403s that reject the default runtime UA.
+  // (Gated repos still 401 regardless — those need an auth token, not a UA.)
+  const res = await fetch(url, { redirect: "follow", headers: { "User-Agent": "pba-vendor/1.0" } });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   const buf = Buffer.from(await res.arrayBuffer());
   mkdirSync(path.dirname(dest), { recursive: true });
@@ -207,12 +226,12 @@ async function run() {
         } catch (e) { console.log(`✗ ${m.id} copy failed: ${e.message}`); failures++; }
       }
     } else if (m.files) {
-      // Remote (HuggingFace) fallback for any future model.
+      // Remote (HuggingFace) download. `hfRepo` overrides the local `id` as the repo path.
       try {
         let total = 0;
         for (const f of m.files) {
           const [repoPath, destRel] = Array.isArray(f) ? f : [f, f];
-          total += await downloadTo(`https://huggingface.co/${m.id}/resolve/main/${repoPath}`, path.join(modelRoot, destRel));
+          total += await downloadTo(`https://huggingface.co/${m.hfRepo || m.id}/resolve/main/${repoPath}`, path.join(modelRoot, destRel));
         }
         console.log(`✓ ${m.id} (${hr(total)})`);
       } catch (e) { console.log(`✗ ${m.id} failed: ${e.message}`); failures++; }

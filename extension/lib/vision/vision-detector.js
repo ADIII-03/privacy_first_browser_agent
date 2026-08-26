@@ -412,9 +412,20 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!cls) cls = computeMasksCPU(image, DEFAULT_CFG);
     let detections = regionsFromCls(cls, image.width, image.height, DEFAULT_CFG);
 
-    // Optional neural detections (faces via BlazeFace/YOLOS, etc.), merged in.
+    // Optional neural detections (faces + signatures via vendored YOLO models), merged in.
     if (G.PBA.visionNeural && G.PBA.visionNeural.available) {
       try {
+        // SIGNATURES: the neural model REPLACES the classical heuristic when vendored.
+        // That heuristic (wide + short + sparse dark ink) over-fires massively on text —
+        // underlines, rules and text lines all match its shape, e.g. 51 phantom
+        // "signatures" on a receipt — so once the model is loaded we drop the classical
+        // signature boxes and keep only the model's. Faces stay UNION-merged (recall-
+        // leaning by design). If the signature model isn't vendored, covers() is false
+        // and the classical branch still runs — no coverage loss (fail-safe).
+        const covers = G.PBA.visionNeural.covers;
+        if (typeof covers === "function" && covers(PII.SIGNATURE)) {
+          detections = detections.filter((d) => d.pii_type !== PII.SIGNATURE);
+        }
         const extra = await G.PBA.visionNeural.detect(image);
         if (Array.isArray(extra)) detections = detections.concat(extra);
       } catch (_) {}
