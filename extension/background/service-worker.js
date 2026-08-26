@@ -68,13 +68,73 @@ async function captureScreenshot(tabId) {
   return ext.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 80 });
 }
 
+// Content-script files, mirroring manifest.json content_scripts[0].js. Declarative
+// injection only fires on page LOAD, so a tab opened before the extension (or open
+// across an extension reload) has no listener until it reloads — which otherwise
+// surfaces as a cryptic "Receiving end does not exist" on the first PERCEIVE.
+const CONTENT_SCRIPTS = [
+  "lib/protocol.js",
+  "lib/privacy/pii-regex.js",
+  "lib/privacy/dom-detector.js",
+  "lib/privacy/fusion.js",
+  "lib/privacy/policy.js",
+  "lib/redactor.js",
+  "lib/dom-perception.js",
+  "content/content.js",
+];
+
+// Guarantee the content script is alive in `tabId`, injecting it on demand.
+// Returns { ok:true } (optionally { injected:true }) or { ok:false, reason } with
+// an actionable message when the page simply can't host a content script.
+async function ensureContentScript(tabId) {
+  const ping = () =>
+    sendToTab(tabId, { cmd: "PING" }).then((r) => !!(r && r.ok)).catch(() => false);
+
+  if (await ping()) return { ok: true };
+
+  // Pages a content script can never run on — say so plainly instead of failing
+  // with a connection error the user can't interpret.
+  let url = "";
+  try { url = (await ext.tabs.get(tabId)).url || ""; } catch (_) {}
+  if (/^(chrome|edge|brave|about|devtools|view-source|chrome-extension|moz-extension):/i.test(url) ||
+      /^https?:\/\/(chrome\.google\.com\/webstore|chromewebstore\.google\.com)/i.test(url)) {
+    return { ok: false, reason: `This page (${url || "unknown"}) can't run the agent. Switch to a normal http(s) tab — e.g. the demo page — and click Run again.` };
+  }
+
+  if (!(ext.scripting && ext.scripting.executeScript)) {
+    return { ok: false, reason: "No content script in this tab. Reload the page (F5) and click Run again." };
+  }
+
+  try {
+    await ext.scripting.insertCSS({ target: { tabId }, files: ["content/overlay.css"] }).catch(() => {});
+    await ext.scripting.executeScript({ target: { tabId }, files: CONTENT_SCRIPTS });
+  } catch (e) {
+    const hint = /^file:\/\//i.test(url)
+      ? ' For local file:// pages, enable "Allow access to file URLs" for this extension at chrome://extensions, or serve the demo over http://localhost.'
+      : " Reload the page (F5) and click Run again.";
+    return { ok: false, reason: `Couldn't inject the content script (${String(e && e.message || e)}).${hint}` };
+  }
+
+  return (await ping())
+    ? { ok: true, injected: true }
+    : { ok: false, reason: "Injected the content script but it didn't respond. Reload the page (F5) and click Run again." };
+}
+
 async function callServer(serverUrl, payload) {
   const res = await fetch(serverUrl.replace(/\/$/, "") + "/plan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("server_" + res.status);
+  if (!res.ok) {
+    // Surface the server's own reason instead of a bare status. FastAPI puts it
+    // under `detail` for BOTH HTTPException (e.g. residual_pii_detected) and
+    // Pydantic request-validation errors (e.g. an int field given a float box).
+    let why = "";
+    try { const b = await res.json(); why = ": " + JSON.stringify(b && b.detail !== undefined ? b.detail : b).slice(0, 300); }
+    catch (_) {}
+    throw new Error("server_" + res.status + why);
+  }
   return res.json();
 }
 
@@ -87,6 +147,19 @@ async function runTask(task, tabId) {
   });
   await ensureOffscreen();
   pushLog({ kind: "start", task });
+
+  // The whole loop talks to the content script (PERCEIVE/EXECUTE). Make sure it's
+  // actually there before we start — self-heal by injecting it if the tab predates
+  // the last extension reload, and give an actionable message if the page can't
+  // host it at all (chrome://, web store, file:// without file access).
+  const cs = await ensureContentScript(tabId);
+  if (!cs.ok) {
+    pushLog({ kind: "error", error: cs.reason });
+    state.running = false;
+    pushLog({ kind: "stopped", step: 0 });
+    return;
+  }
+  if (cs.injected) pushLog({ kind: "info", note: "content script injected on demand (tab predated last extension reload)" });
 
   const recentSignatures = [];
 

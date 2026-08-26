@@ -421,10 +421,14 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
 
     // Convert IMAGE (device) px → CSS px so boxes fuse with getBoundingClientRect.
+    // Round to integers: DOM boxes are already Math.round'd, the compositor draws
+    // whole pixels, and the wire schema (Redaction.bbox: List[int]) rejects floats —
+    // which is exactly what a fractional dpr (e.g. Windows 150% → 1.5) would produce.
     const s = 1 / dpr;
     const scaled = detections.map((d) => ({
       pii_type: d.pii_type,
-      bbox: [d.bbox[0] * s, d.bbox[1] * s, d.bbox[2] * s, d.bbox[3] * s],
+      bbox: [Math.round(d.bbox[0] * s), Math.round(d.bbox[1] * s),
+             Math.round(d.bbox[2] * s), Math.round(d.bbox[3] * s)],
       confidence: d.confidence,
     }));
     return { detections: scaled, ready: _ready, backend: _backend };
