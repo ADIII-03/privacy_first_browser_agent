@@ -63,7 +63,7 @@ privacy-browser-agent/
 │   │   ├── dom-perception.js       # assembles the sanitized context payload
 │   │   └── vision/
 │   │       ├── vision-detector.js  # on-device CV detector: WebGPU shader + CPU fallback
-│   │       └── vision-neural.js    # optional transformers.js/ONNX hook (vendored, off by default)
+│   │       └── vision-neural.js    # neural YOLO detectors (ONNX): yolov8n-face + yolo-signature (vendored)
 │   ├── content/content.js          # action validation + execution + local vault
 │   ├── background/service-worker.js# perceive→plan→act orchestration
 │   ├── offscreen/                  # offscreen document (vision + compositing host)
@@ -188,9 +188,10 @@ production behavior, with no separate eval implementation to drift.
   signatures exist only as pixels. A dependency-free CV core (YCbCr skin + dark-ink
   geometry, coarse-grid connected components) runs on a **WebGPU compute shader with a
   CPU fallback** — and the GPU path is trusted only after a runtime self-test matches
-  the CPU output, so it degrades safely. An optional `transformers.js`/ONNX neural hook
-  drops in when weights are vendored. The screenshot is withheld entirely if vision
-  can't run on an image-bearing page.
+  the CPU output, so it degrades safely. Two vendored ONNX **YOLO** detectors
+  (`yolov8n-face`, `yolo-signature`) add faces/signatures on top — faces union with the
+  CV core, signatures replace the classical heuristic (see [`docs/VISION.md`](docs/VISION.md)).
+  The screenshot is withheld entirely if vision can't run on an image-bearing page.
 - **Fail-closed privacy.** Recall is treated as a safety property (“when uncertain,
   redact”). High-risk categories are masked even below the confidence threshold, and if
   vision is unavailable on a page with images, the screenshot is withheld entirely.
@@ -229,12 +230,12 @@ geometry are browser-independent and covered by the eval regardless of host.
 - The on-device **vision detector** (`vision/vision-detector.js`) ships a dependency-free
   CV core with a **WebGPU compute-shader path and a CPU fallback**. The GPU path is
   trusted only after a runtime probe reproduces the CPU classification, so it fails safe.
-  An optional neural hook (`vision/vision-neural.js`, transformers.js/ONNX) is
-  code-complete and activates once weights are vendored — now a one-command step:
-  `node tools/vendor-vision.mjs` (see [`docs/VENDORING.md`](docs/VENDORING.md)). It
-  unions with the classical core, warms up at init to hide cold-start, and adds an
-  `id_document` PII category plumbed end-to-end. The extension CSP forbids CDN loads,
-  so vendoring is intentionally offline-first.
+  Two ONNX **YOLO** detectors (`vision/vision-neural.js`: `yolov8n-face` + `yolo-signature`)
+  activate once weights are vendored — a one-command step, `node tools/vendor-vision.mjs`
+  (see [`docs/VENDORING.md`](docs/VENDORING.md) and the deep-dive [`docs/VISION.md`](docs/VISION.md)).
+  Faces union with the classical core; signatures replace its noisier heuristic. They warm
+  up at init to hide cold-start, and `id_document` is plumbed end-to-end for a future model.
+  The extension CSP forbids CDN loads, so vendoring is intentionally offline-first.
 - **In-browser runtime of the WebGPU shader and `chrome.*` plumbing is not exercised in
   this environment.** It is covered by the Node-tested CPU core (identical algorithm),
   the GPU self-verification probe, syntax/byte checks, and the manual `demo/` page. We do

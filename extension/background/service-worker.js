@@ -190,6 +190,16 @@ async function runTask(task, tabId) {
         : { detections: [], ready: false };
       phases.vision = Math.round(performance.now() - t);
 
+      // Record what the on-device vision stack actually did this step so the popup can
+      // prove the models ran: the classical CV core's path plus, when weights are
+      // vendored, the neural model list / execution provider / summed warm-up.
+      state.vision = {
+        offscreen: offscreenSupported,
+        ready: !!vision.ready,
+        classical: vision.backend || null,   // CV core execution path: cpu | webgpu
+        neural: (vision.neural && vision.neural.available) ? vision.neural : null,
+      };
+
       // 3. PERCEIVE + PROTECT (in-page; produces sanitized payload + redaction plan)
       t = performance.now();
       const perceived = await sendToTab(tabId, {

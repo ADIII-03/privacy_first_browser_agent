@@ -60,11 +60,35 @@ function renderLog(log) {
   el.scrollTop = el.scrollHeight;
 }
 
+function renderVision(state) {
+  const v = state && state.vision;
+  const nEl = $("vNeural"), mEl = $("vModels"), eEl = $("vEP"), wEl = $("vWarm");
+  if (!nEl) return;
+  if (!v) { nEl.textContent = mEl.textContent = eEl.textContent = wEl.textContent = "–"; return; }
+  const neural = v.neural;
+  if (v.offscreen === false) {
+    nEl.innerHTML = '<span class="pill warn">offscreen unsupported — text-only</span>';
+  } else if (neural && neural.available) {
+    nEl.innerHTML = '<span class="pill ok">active (on-device)</span>';
+  } else {
+    nEl.innerHTML = '<span class="pill warn">classical core only</span>';
+  }
+  // Model list (e.g. yolov8n-face, yolo-signature) — proves which detectors loaded.
+  mEl.textContent = neural && neural.models && neural.models.length ? neural.models.join(", ") : "—";
+  // Execution provider: neural EP (WebGPU/WASM) and the classical core's path.
+  const eps = [];
+  if (neural && neural.ep) eps.push("neural " + String(neural.ep).toUpperCase());
+  if (v.classical) eps.push("CV core " + String(v.classical).toUpperCase());
+  eEl.textContent = eps.length ? eps.join("  ·  ") : "—";
+  wEl.textContent = neural && neural.warmupMs != null ? neural.warmupMs + " ms" : "—";
+}
+
 function renderState(state) {
   if (!state) return;
   const lastReceipt = state.receipts && state.receipts[state.receipts.length - 1];
   renderReceipt(lastReceipt);
   renderTelemetry(state);
+  renderVision(state);
   renderLog(state.log);
 }
 

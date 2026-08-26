@@ -393,18 +393,34 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     return { backend: _backend, neural: !!(G.PBA.visionNeural && G.PBA.visionNeural.available), ready: _ready };
   }
 
+  // Neural-stack status for the popup (proves the on-device models actually ran): which
+  // models loaded, the execution provider they landed on, and the summed cold-start
+  // warm-up. null when no neural model is vendored — the classical CV core alone runs.
+  function neuralInfo() {
+    const vn = G.PBA.visionNeural;
+    if (!vn || !vn.available) return null;
+    return {
+      available: true,
+      models: vn.models || [],
+      categories: vn.categories || [],
+      ep: vn.ep || null,
+      warmupMs: vn.warmupMs != null ? vn.warmupMs : null,
+    };
+  }
+
   /**
    * @param {string} imageDataUrl  device-pixel screenshot (from captureVisibleTab)
    * @param {{dpr?:number}} [opts]
-   * @returns {Promise<{detections:Array<{pii_type,bbox,confidence}>, ready:boolean, backend:string}>}
+   * @returns {Promise<{detections:Array, ready:boolean, backend:string, neural:object|null}>}
    *   bbox is in CSS-pixel VIEWPORT coordinates (device px ÷ dpr) to match DOM signals.
+   *   `backend` is the classical core's path (cpu/webgpu); `neural` is the YOLO stack.
    */
   async function detect(imageDataUrl, opts) {
     if (!_ready) await init();
     const dpr = (opts && opts.dpr) || 1;
     let image;
     try { image = await imageDataFromUrl(imageDataUrl); }
-    catch (e) { return { detections: [], ready: _ready, backend: _backend, error: String(e && e.message || e) }; }
+    catch (e) { return { detections: [], ready: _ready, backend: _backend, neural: neuralInfo(), error: String(e && e.message || e) }; }
 
     // Classify (GPU if verified, else CPU), then run the shared region filters.
     let cls;
@@ -442,7 +458,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
              Math.round(d.bbox[2] * s), Math.round(d.bbox[3] * s)],
       confidence: d.confidence,
     }));
-    return { detections: scaled, ready: _ready, backend: _backend };
+    return { detections: scaled, ready: _ready, backend: _backend, neural: neuralInfo() };
   }
 
   const api = {

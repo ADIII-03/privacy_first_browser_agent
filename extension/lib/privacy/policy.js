@@ -33,7 +33,7 @@
     [PII.PERSON]:       { method: R.TOKENIZE, reversibleOk: false, minConf: 0.55 },
     [PII.ADDRESS]:      { method: R.TOKENIZE, reversibleOk: false, minConf: 0.55 },
     [PII.FACE]:         { method: R.BLACKOUT, reversibleOk: true,  minConf: 0.5 },
-    [PII.SIGNATURE]:    { method: R.BLACKOUT, reversibleOk: false, minConf: 0.5 },
+    [PII.SIGNATURE]:    { method: R.BLACKOUT, reversibleOk: false, minConf: 0.35 }, // MUST stay ≤ the signature model's minScore (vision-neural.js REGISTRY); a higher floor silently drops model hits in that band — fail-OPEN for a fail-closed category.
     [PII.ID_DOCUMENT]:  { method: R.BLACKOUT, reversibleOk: false, minConf: 0.45 },
     [PII.IP]:           { method: R.TOKENIZE, reversibleOk: false, minConf: 0.7 },
     [PII.GENERIC_SECRET]:{ method: R.BLACKOUT,reversibleOk: false, minConf: 0.6 },
