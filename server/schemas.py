@@ -12,7 +12,7 @@ These pydantic models are a SECURITY BOUNDARY, not just serialization helpers:
 """
 from __future__ import annotations
 
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict
 from pydantic import BaseModel, Field, field_validator
 
 PROTOCOL_VERSION = "1.0"
@@ -126,3 +126,95 @@ class ActionPlan(BaseModel):
     actions: List[Action] = []
     status: Status = "continue"
     confidence: float = 0.5
+
+
+# --- QUERY path (read-only summarization over sanitized records) --------------
+# Query mode never sends a screenshot, raw DOM, or raw page text. It sends a
+# MASKED, typed view of the page's tables: identifier columns were dropped and
+# replaced by <CATEGORY_n> tokens IN THE BROWSER (extension/lib/record-extraction.js),
+# inline PII in retained cells was tokenized, and amounts/dates were parsed to
+# typed arrays. These models are the server-side mirror of that shape — a security
+# boundary: /query independently residual-scans every cell and fails closed on any
+# raw identifier (main.py), exactly like /plan does for the action path.
+class QueryColumn(BaseModel):
+    name: str = ""
+    kind: str = "other"  # identifier | metric | date | dimension | other
+
+
+class QueryTable(BaseModel):
+    caption: str = ""
+    columns: List[QueryColumn] = []
+    rows: List[List[str]] = []
+    # Column-index lists (indices into `columns`); JSON object keys below are the
+    # same indices stringified (JSON has no int keys).
+    numericColumns: List[int] = []
+    dateColumns: List[int] = []
+    dimensionColumns: List[int] = []
+    numeric: Dict[str, List[Optional[float]]] = {}   # colIdx(str) -> parsed amounts (null where unparsable)
+    dates: Dict[str, List[Optional[str]]] = {}        # colIdx(str) -> ISO dates   (null where unparsable)
+    truncated: bool = False
+
+
+class MaskedSummary(BaseModel):
+    count: int = 0
+    categories: dict = {}
+
+
+class QueryContext(BaseModel):
+    protocol_version: str = PROTOCOL_VERSION
+    session_id: str
+    query: str = ""
+    url_origin: str = ""
+    viewport: Optional[Viewport] = None
+    # Data URL of the REDACTED raster, or None. Query mode NEVER sends the original
+    # screenshot; when present this is the on-device composite with every detected
+    # region (including identifier columns no regex catches) already blacked out into
+    # the pixels. The server does not OCR it — the redaction happened in the browser.
+    screenshot: Optional[str] = None
+    screenshot_included: bool = False
+    tables: List[QueryTable] = []
+    masked: MaskedSummary = MaskedSummary()
+    privacy_receipt: Optional[PrivacyReceipt] = None
+
+    @field_validator("url_origin")
+    @classmethod
+    def _origin_only(cls, v):
+        if v and ("?" in v or v.count("/") > 2):
+            raise ValueError("url_origin must be an origin, not a full URL")
+        return v
+
+
+class Group(BaseModel):
+    key: str
+    count: int = 0
+    sum: float = 0.0
+    avg: float = 0.0
+    min: float = 0.0
+    max: float = 0.0
+
+
+class Totals(BaseModel):
+    count: int = 0
+    sum: float = 0.0
+    avg: float = 0.0
+    min: float = 0.0
+    max: float = 0.0
+
+
+class DateRange(BaseModel):
+    min: Optional[str] = None
+    max: Optional[str] = None
+
+
+class QueryAnswer(BaseModel):
+    protocol_version: str = PROTOCOL_VERSION
+    session_id: str
+    answer: str = ""                       # human-readable summary the panel shows
+    metric: Optional[str] = None           # name of the aggregated amount column
+    dimension: Optional[str] = None         # name of the group-by column, if any
+    groups: List[Group] = []                # per-dimension breakdown (the "calc steps")
+    totals: Optional[Totals] = None         # grand totals across all rows
+    date_range: Optional[DateRange] = None
+    row_count: int = 0
+    status: Status = "done"
+    confidence: float = 0.6

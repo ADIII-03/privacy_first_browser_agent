@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Demo Bank — Transaction Statement</title>
+<!--
+  demo/transactions.html — a SELF-CONTAINED synthetic bank statement for the
+  Privacy Browser Agent's QUERY (Summarize) path. Everything here is FAKE.
+
+  Its job is to exercise the on-device record extractor + masking so a query like
+  "summarize my spending by transaction type" produces a real, verifiable answer
+  while sensitive identifiers never leave the browser:
+
+    • Account column (header "Account") -> classified as an IDENTIFIER column, so
+      every value is DROPPED on-device and replaced by a <BANK_ACCOUNT_n> token.
+      The raw digits never enter the payload sent to the server.
+    • A Luhn-valid card number printed INSIDE a description cell (row 10) -> caught
+      by the shared PII scanner and tokenized to <CREDIT_CARD_n> inline.
+    • Date / Type / Merchant / Amount -> parsed and typed locally (amounts and dates
+      are transaction data, NOT PII) so the server can compute totals/averages/
+      breakdowns from the masked table.
+
+  Open in Chrome, open the side panel, choose "Summarize" (or Auto), and run:
+     "summarize my spending by transaction type"
+-->
+<style>
+  :root { --ink:#1f2933; --muted:#66707a; --line:#dbe0e6; --brand:#1d4ed8; --bg:#eef1f4; --card:#fff; --credit:#047857; --debit:#b23b3b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:var(--brand); color:#fff; padding:14px 22px; display:flex; align-items:center; gap:14px; }
+  header .seal { width:40px; height:40px; border-radius:10px; background:#fff; color:var(--brand); display:grid; place-items:center; font-weight:800; font-size:18px; }
+  header h1 { font-size:18px; margin:0; font-weight:650; }
+  header .sub { font-size:12px; opacity:.85; }
+  .wrap { max-width:940px; margin:22px auto; padding:0 18px; }
+  .banner { background:#fff5d6; border:1px solid #e7cf7a; color:#6b5300; padding:8px 12px; border-radius:8px; font-size:13px; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px 22px; margin-bottom:18px; }
+  .card h2 { font-size:15px; margin:0 0 14px; padding-bottom:8px; border-bottom:1px solid var(--line); color:var(--brand); letter-spacing:.02em; text-transform:uppercase; }
+  .acct { display:grid; grid-template-columns:1fr 1fr; gap:8px 24px; font-size:13px; }
+  .acct dt { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  .acct dd { margin:2px 0 8px; font-family:ui-monospace,Consolas,monospace; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  caption { text-align:left; font-size:12px; color:var(--muted); padding-bottom:8px; }
+  th, td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); }
+  thead th { font-size:11px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); background:#f7f9fb; position:sticky; top:0; }
+  td.amt { text-align:right; font-variant-numeric:tabular-nums; font-family:ui-monospace,Consolas,monospace; }
+  td.amt.debit { color:var(--debit); }
+  td.amt.credit { color:var(--credit); }
+  td.acctno { font-family:ui-monospace,Consolas,monospace; color:#334155; }
+  tbody tr:hover { background:#f8fafc; }
+  footer { text-align:center; color:var(--muted); font-size:12px; padding:14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="seal">₹</div>
+  <div>
+    <h1>Demo Bank — Personal Statement</h1>
+    <div class="sub">Savings Account · January 2026 · (SANDBOX / synthetic data)</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="banner">
+    ⚠ Synthetic demonstration statement. All names, amounts, account and card numbers are fabricated to exercise the on-device privacy filter — nothing here is real.
+  </div>
+
+  <!-- Account holder block. Not a transaction table, so the extractor leaves it
+       alone; it's on the page only to make the statement look real. -->
+  <section class="card">
+    <h2>Account Holder</h2>
+    <dl class="acct">
+      <dt>Name</dt><dd>A. User</dd>
+      <dt>Branch</dt><dd>MG Road, Bengaluru</dd>
+      <dt>Statement period</dt><dd>01 Jan 2026 – 31 Jan 2026</dd>
+      <dt>Opening balance</dt><dd>₹42,180.00</dd>
+    </dl>
+  </section>
+
+  <!-- The transaction table — the query path's target. Columns:
+       Date (date) · Type (dimension) · Merchant (dimension, row 10 hides a card) ·
+       Amount (metric) · Account (IDENTIFIER → dropped to a token on-device). -->
+  <section class="card">
+    <h2>Transaction History</h2>
+    <table id="txns">
+      <caption>Transaction history — January 2026 (12 records)</caption>
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Type</th>
+          <th scope="col">Merchant</th>
+          <th scope="col">Amount</th>
+          <th scope="col">Account</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>2026-01-03</td><td>Groceries</td><td>BigBazaar</td><td class="amt debit">₹2,340.00</td><td class="acctno">123456789012</td></tr>
+        <tr><td>2026-01-05</td><td>Dining</td><td>Cafe Coffee Day</td><td class="amt debit">₹560.50</td><td class="acctno">123456789012</td></tr>
+        <tr><td>2026-01-07</td><td>Transport</td><td>Uber</td><td class="amt debit">₹430.00</td><td class="acctno">123456789012</td></tr>
+        <tr><td>2026-01-09</td><td>Shopping</td><td>Amazon</td><td class="amt debit">₹3,199.00</td><td class="acctno">123456789012</td></tr>
+        <tr><td>2026-01-11</td><td>Utilities</td><td>BESCOM Electricity</td><td class="amt debit">₹1,875.00</td><td class="acctno">123456789012</td></tr>
+        <tr><td>2026-01-13</td><td>Groceries</td><td>More Supermarket</td><td class="amt debit">₹1,120.75</td><td class="acctno">123456789012</td></tr>
+        <tr><td>2026-01-15</td><td>Income</td><td>Acme Payroll — Salary</td><td class="amt credit">₹85,000.00</td><td class="acctno">123456789012</td></tr>
+        <tr><td>2026-01-17</td><td>Dining</td><td>Truffles</td><td class="amt debit">₹1,240.00</td><td class="acctno">123456789012</td></tr>
+        <tr><td>2026-01-19</td><td>Transport</td><td>IndianOil Fuel</td><td class="amt debit">₹2,000.00</td><td class="acctno">123456789012</td></tr>
+        <!-- Row 10 hides a Luhn-valid card number in the description: it must be
+             tokenized to <CREDIT_CARD_n> by the shared scanner before egress. -->
+        <tr><td>2026-01-21</td><td>Shopping</td><td>Refund to card 4111 1111 1111 1111</td><td class="amt credit">-₹1,299.00</td><td class="acctno">123456789012</td></tr>
+        <tr><td>2026-01-24</td><td>Utilities</td><td>Airtel Broadband</td><td class="amt debit">₹999.00</td><td class="acctno">123456789012</td></tr>
+        <tr><td>2026-01-28</td><td>Groceries</td><td>DMart</td><td class="amt debit">₹1,860.25</td><td class="acctno">123456789012</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <p style="font-size:12px;color:var(--muted);margin-top:-6px">
+    Try: <b>“summarize my spending by transaction type”</b>, <b>“what is my total spending?”</b>,
+    or <b>“break down transactions by merchant”</b>. The Account column and the card number in row 10
+    are masked on-device — watch the Privacy Audit tab to see exactly what leaves the browser.
+  </p>
+</div>
+
+<footer>Demo Bank · synthetic sandbox · no raw account or card number leaves your machine</footer>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Browser Agent — Side Panel</title>
+    <!-- External CSS/JS only: the extension CSP is `script-src 'self' 'wasm-unsafe-eval'`,
+         so no inline <script> is allowed (inline <style> would be, but we keep it external
+         for parity with the plan). Everything here is a PASSIVE renderer of the `state`
+         object the service worker broadcasts — it holds no privacy logic of its own. -->
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <!-- Brand + resolved-mode chip. Scrolls away; the runtime bar + tabs below pin. -->
+    <header class="top">
+      <div class="brand">
+        <h1>Privacy Browser Agent</h1>
+        <span id="modeChip" class="chip idle" title="Resolved task mode">idle</span>
+      </div>
+      <p class="tag">The browser is the privacy gatekeeper — only sanitized context leaves this machine.</p>
+    </header>
+
+    <!-- Task input + mode toggle + Run/Stop. Auto lets the on-device classifier decide;
+         Summarize forces query mode (server answers over masked data, no screenshot);
+         Act forces the server-driven action loop. -->
+    <div class="controls">
+      <input id="task" placeholder="e.g. summarize my spending by transaction type" autocomplete="off" />
+      <div class="seg" id="modeToggle" role="group" aria-label="Task mode">
+        <button type="button" data-mode="auto" class="on">Auto</button>
+        <button type="button" data-mode="query">Summarize</button>
+        <button type="button" data-mode="action">Act</button>
+      </div>
+      <div class="run-row">
+        <button id="run" class="primary">Run</button>
+        <button id="stop">Stop</button>
+      </div>
+    </div>
+
+    <!-- Everything from here down stays pinned while the panels scroll. -->
+    <div class="sticky-top">
+      <!-- ZONE 1 — On-device runtime / vision / WebGPU stats (pinned at top). -->
+      <section id="visionBar" class="vision">
+        <div class="vhead">
+          <h3>On-device runtime</h3>
+          <span id="vRuntime" class="chip mut">–</span>
+        </div>
+        <div class="vgrid">
+          <div class="vcell"><label>Neural stack</label><b id="vNeural">–</b></div>
+          <div class="vcell"><label>Execution</label><b id="vEP">–</b></div>
+          <div class="vcell"><label>Models</label><b id="vModels">–</b></div>
+          <div class="vcell"><label>Warm-up</label><b id="vWarm">–</b></div>
+          <div class="vcell"><label>Detections</label><b id="vDet">–</b></div>
+          <div class="vcell"><label>Last vision</label><b id="vLast">–</b></div>
+        </div>
+        <div id="vAdapter" class="adapter" hidden></div>
+        <div id="vPerModelWrap" class="permodel-wrap" hidden>
+          <table id="vPerModel" class="permodel">
+            <thead><tr><th>Model</th><th>EP</th><th>ms</th><th>#</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Tab bar: the four spec sections collapse to three switchable views under the
+           always-visible runtime bar (Answer + Privacy Audit are the demo headliners). -->
+      <nav class="tabs" id="tabs" role="tablist">
+        <button type="button" data-tab="proc" class="on" role="tab">Proceedings</button>
+        <button type="button" data-tab="answer" role="tab">Answer <span id="answerDot" class="dot" hidden></span></button>
+        <button type="button" data-tab="audit" role="tab">Privacy&nbsp;Audit <span id="auditDot" class="dot" hidden></span></button>
+      </nav>
+    </div>
+
+    <main>
+      <!-- ZONE 2 — Live proceedings (the streamed step log). -->
+      <section id="tab-proc" class="panel on" role="tabpanel">
+        <div id="log" class="log"><div class="empty">Run a task to stream its proceedings here.</div></div>
+      </section>
+
+      <!-- ZONE 3 — Answer / result (query answer, or action receipt + plan). -->
+      <section id="tab-answer" class="panel" role="tabpanel">
+        <div id="answer"><div class="empty">No result yet. Ask a question (Summarize) or run an action (Act).</div></div>
+      </section>
+
+      <!-- ZONE 4 — Privacy audit / demo view for judges. -->
+      <section id="tab-audit" class="panel" role="tabpanel">
+        <div id="audit"><div class="empty">The privacy audit populates once a task runs — it shows exactly what stayed local and what left the browser.</div></div>
+      </section>
+    </main>
+
+    <footer class="cfg">
+      <span>Server</span>
+      <input id="serverUrl" placeholder="http://localhost:8000" autocomplete="off" />
+      <button id="saveCfg">Save</button>
+    </footer>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

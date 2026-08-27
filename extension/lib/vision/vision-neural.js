@@ -120,6 +120,14 @@
   // PII categories the loaded models cover — the hook the classical layer reads to
   // know a type is handled neurally (so it can drop its noisier classical boxes).
   let _categories = new Set();
+  // Per-model timing/count from the LAST detect() call, for the side panel's live
+  // runtime stats. Reset each detect(); one entry per model actually run this frame.
+  let _lastPerf = [];
+  // Per-model LOAD failures from the last init() — [{id, error}]. Empty when every
+  // ACTIVE model loaded. This is how "why is neural not connected" gets an answer:
+  // the classical-only fallback used to swallow the real reason (missing weights,
+  // no execution provider, ORT import failure) with a silent catch.
+  let _loadErrors = [];
 
   // Resolve a packaged file to a same-origin URL (extension context).
   function pkgUrl(rel) {
@@ -263,6 +271,7 @@
   async function init() {
     if (_initTried) return { available: _available };
     _initTried = true;
+    _loadErrors = [];
     // Load every ACTIVE model independently — a missing/broken one is skipped, the
     // rest still load, and its PII type simply falls back to the classical core.
     for (const id of ACTIVE_MODELS) {
@@ -278,9 +287,13 @@
           if (cfg.warmup) { try { const t0 = Date.now(); await rec.detector(tfWarmupFrame(rec.mod.RawImage), { threshold: 1.1 }); rec.warmupMs = Date.now() - t0; } catch (_) {} }
         }
         _models.set(id, rec);
-      } catch (_) {
+      } catch (e) {
         // This model isn't vendored (or failed to load) → skip it. Fail-open per
         // model; the classical core still guarantees baseline coverage for its type.
+        // Record WHY (ORT import / no execution provider / missing weights) so the
+        // side panel can answer "why isn't it using the neural one" instead of a
+        // mute classical-only fallback. Never store anything but the error text.
+        _loadErrors.push({ id, error: String((e && e.message) || e) });
       }
     }
     _available = _models.size > 0;
@@ -300,13 +313,20 @@
   async function detect(image) {
     if (!_models.size) return [];
     const all = [];
+    _lastPerf = [];
     // Sequential (not Promise.all): the models share the offscreen thread and one
     // GPU/WASM backend, so serial runs avoid EP contention. Two nano models ≈ 80ms.
     for (const rec of _models.values()) {
+      const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
+      let dets = [];
       try {
-        const dets = rec.runtime === "onnx-yolo" ? await detectOnnxYolo(rec, image) : await detectTransformers(rec, image);
+        dets = rec.runtime === "onnx-yolo" ? await detectOnnxYolo(rec, image) : await detectTransformers(rec, image);
         for (const d of dets) all.push(d);
       } catch (_) { /* one model failing must not sink the others */ }
+      const t1 = (typeof performance !== "undefined" ? performance.now() : Date.now());
+      // Wraps the WHOLE per-model run (letterbox → session.run → decode → NMS), not
+      // just session.run, so the panel's ms reflects wall-clock cost per detector.
+      _lastPerf.push({ id: rec.id, category: rec.cfg.category || null, ep: rec.ep || null, ms: +(t1 - t0).toFixed(1), count: dets.length });
     }
     return all;
   }
@@ -325,6 +345,12 @@
     get warmupMs() { let s = 0, any = false; for (const r of _models.values()) if (r.warmupMs != null) { s += r.warmupMs; any = true; } return any ? s : null; },
     // Representative execution provider (first loaded); the models usually share one.
     get ep() { for (const r of _models.values()) return r.ep; return null; },
+    // Per-model {id, category, ep, ms, count} from the last detect() (empty until one runs).
+    get lastPerf() { return _lastPerf.slice(); },
+    // Per-model LOAD failures from the last init() — [{id, error}]; empty when all
+    // ACTIVE models loaded. Surfaced in the panel so a classical-only fallback names
+    // its cause rather than staying silent.
+    get lastErrors() { return _loadErrors.slice(); },
     REGISTRY, ACTIVE_MODELS,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = G.PBA.visionNeural;
