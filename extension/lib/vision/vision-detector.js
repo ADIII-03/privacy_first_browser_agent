@@ -283,7 +283,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   if (y < cfg.inkLumaMax) { out[i] = 2u; } else { out[i] = 0u; }
 }`;
 
-  let _gpu = { device: null, tried: false, ok: false };
+  let _gpu = { device: null, tried: false, ok: false, adapterInfo: null };
 
   async function _initGpu() {
     if (_gpu.tried) return _gpu.ok;
@@ -292,6 +292,17 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
       if (!(typeof navigator !== "undefined" && navigator.gpu)) return false;
       const adapter = await navigator.gpu.requestAdapter();
       if (!adapter) return false;
+      // Capture the adapter identity for the side panel (proves WHICH GPU ran the
+      // classifier). `adapter.info` is Chrome 127+; older builds expose the async
+      // requestAdapterInfo(). On Chrome 121 some fields may be empty — render what's
+      // present. Best-effort: never let a missing field block GPU init.
+      try {
+        const info = adapter.info || (adapter.requestAdapterInfo ? await adapter.requestAdapterInfo() : null);
+        if (info) _gpu.adapterInfo = {
+          vendor: info.vendor || "", architecture: info.architecture || "",
+          device: info.device || "", description: info.description || "",
+        };
+      } catch (_) {}
       _gpu.device = await adapter.requestDevice();
       _gpu.module = _gpu.device.createShaderModule({ code: WGSL });
       _gpu.pipeline = _gpu.device.createComputePipeline({ layout: "auto", compute: { module: _gpu.module, entryPoint: "main" } });
@@ -405,11 +416,22 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
       categories: vn.categories || [],
       ep: vn.ep || null,
       warmupMs: vn.warmupMs != null ? vn.warmupMs : null,
+      // Per-model {id, category, ep, ms, count} from the last detect() — drives the
+      // side panel's "per-model inference time / detections" runtime stats.
+      perModel: vn.lastPerf || [],
     };
   }
 
+  // Neural-stack LOAD failures from the last init() — [{id, error}]. Unlike
+  // neuralInfo() (which is null the moment the stack is unavailable, hiding the
+  // reason), this survives a total load failure so the panel can show WHY neural
+  // isn't connected — the mute "classical core only" is what we're fixing.
+  function neuralErrors() {
+    const vn = G.PBA.visionNeural;
+    return (vn && vn.lastErrors) ? vn.lastErrors : [];
+  }
+
   /**
-   * @param {string} imageDataUrl  device-pixel screenshot (from captureVisibleTab)
    * @param {{dpr?:number}} [opts]
    * @returns {Promise<{detections:Array, ready:boolean, backend:string, neural:object|null}>}
    *   bbox is in CSS-pixel VIEWPORT coordinates (device px ÷ dpr) to match DOM signals.
@@ -420,7 +442,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     const dpr = (opts && opts.dpr) || 1;
     let image;
     try { image = await imageDataFromUrl(imageDataUrl); }
-    catch (e) { return { detections: [], ready: _ready, backend: _backend, neural: neuralInfo(), error: String(e && e.message || e) }; }
+    catch (e) { return { detections: [], ready: _ready, backend: _backend, neural: neuralInfo(), neuralErrors: neuralErrors(), gpuAdapter: _gpu.adapterInfo || null, error: String(e && e.message || e) }; }
 
     // Classify (GPU if verified, else CPU), then run the shared region filters.
     let cls;
@@ -461,7 +483,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
              Math.round(d.bbox[2] * s), Math.round(d.bbox[3] * s)],
       confidence: d.confidence,
     }));
-    return { detections: scaled, ready: _ready, backend: _backend, neural: neuralInfo() };
+    return { detections: scaled, ready: _ready, backend: _backend, neural: neuralInfo(), neuralErrors: neuralErrors(), gpuAdapter: _gpu.adapterInfo || null };
   }
 
   const api = {

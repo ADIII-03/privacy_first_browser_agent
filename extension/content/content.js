@@ -201,6 +201,11 @@
           sendResponse({ ok: true, dpr: devicePixelRatio || 1, w: innerWidth, h: innerHeight });
         } else if (msg.cmd === "PING") {
           sendResponse({ ok: true, ready: true, dpr: devicePixelRatio || 1 });
+        } else if (msg.cmd === "EXTRACT_RECORDS") {
+          // Query mode: return MASKED tabular records for on-device summarization.
+          // All redaction happens in PBA.records.extract — raw account/card numbers
+          // never enter the response; only sanitized/typed values leave the page.
+          sendResponse(PBA.records.extract({ task: msg.task }));
         }
       } catch (e) {
         sendResponse({ ok: false, error: String(e && e.message || e) });

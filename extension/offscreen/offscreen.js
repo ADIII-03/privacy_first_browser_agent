@@ -8,6 +8,20 @@ const ext = globalThis.browser || globalThis.chrome;
 
 ext.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.__to !== "offscreen") return; // only handle messages addressed to us
+  // Liveness handshake. chrome.offscreen.createDocument() resolves once the document
+  // EXISTS, but this page's <script>s — which register the very listener you're reading —
+  // may not have executed yet. A VISION/COMPOSE message sent into that gap is dropped.
+  // The action loop hides it (step 2+ recovers), but query mode's SINGLE vision pass
+  // then shows "classical core only" forever. The worker polls this ping after
+  // createDocument() and only sends real work once it answers. Answer synchronously.
+  if (msg.cmd === "OFFSCREEN_PING") {
+    sendResponse({
+      ok: true, ready: true,
+      vision: !!(PBA && PBA.vision),
+      neural: !!(PBA && PBA.visionNeural && PBA.visionNeural.available),
+    });
+    return; // sync response — don't keep the channel open
+  }
   (async () => {
     try {
       if (msg.cmd === "VISION") {

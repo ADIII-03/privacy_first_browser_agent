@@ -12,7 +12,8 @@
     "tabs",
     "storage",
     "unlimitedStorage",
-    "offscreen"
+    "offscreen",
+    "sidePanel"
   ],
 
   "//unlimitedStorage_note": "Vendored neural weights (models/, see docs/VENDORING.md) exceed the 10 MB chrome.storage default; unlimitedStorage keeps them evict-safe. Weights are packaged in-extension, never fetched at runtime (CSP).",
@@ -25,9 +26,13 @@
     "type": "module"
   },
 
+  "//action_note": "default_popup was removed so the toolbar click opens the side panel instead (service-worker.js calls sidePanel.setPanelBehavior openPanelOnActionClick). The action block stays — openPanelOnActionClick needs a registered action, and default_title still names the toolbar button. popup/* files remain in the package (reachable directly) but nothing points at them.",
   "action": {
-    "default_title": "Privacy Browser Agent",
-    "default_popup": "popup/popup.html"
+    "default_title": "Privacy Browser Agent"
+  },
+
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
   },
 
   "content_scripts": [
@@ -43,6 +48,7 @@
         "lib/privacy/policy.js",
         "lib/redactor.js",
         "lib/dom-perception.js",
+        "lib/record-extraction.js",
         "content/content.js"
       ],
       "css": ["content/overlay.css"]
