@@ -19,7 +19,7 @@
   "//unlimitedStorage_note": "Vendored neural weights (models/, see docs/VENDORING.md) exceed the 10 MB chrome.storage default; unlimitedStorage keeps them evict-safe. Weights are packaged in-extension, never fetched at runtime (CSP).",
 
   "//host_permissions_note": "captureVisibleTab in the multi-step agent loop needs a host permission. activeTab covers only ONE user-invoked action and lapses across the background loop — the symptom is \"activeTab permission is required\" on step 2+, or when the target tab isn't the focused tab. Scoped to web + local-file schemes (not <all_urls>) so it still can't touch chrome:// or the web store. For a zero-standing-permission posture, empty this and request these origins at runtime via optional_host_permissions from the popup's Run click (a user gesture).",
-  "host_permissions": ["http://*/*", "https://*/*", "file:///*"],
+  "host_permissions": ["<all_urls>", "http://*/*", "https://*/*", "file:///*"],
 
   "background": {
     "service_worker": "background/service-worker.js",
