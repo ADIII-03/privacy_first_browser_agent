@@ -70,15 +70,15 @@ const MODELS = [
   },
   {
     // Handwritten-signature detector (tech4humans YOLOv8s). Copied from the local
-    // export in eval/models/ (same pattern as the face model) — the ChiSig YOLOv11n
-    // weight that used to be pulled from HF was empirically blind to Latin signatures
-    // (probe max 0.004), so it was swapped out 2026-08-26. Single-class ("signature")
-    // Ultralytics detect head → the SAME [1,5,N] layout the face model uses, decoded
-    // by the SAME decodeYolo (scoreIndex 4). LICENSE: AGPL-3.0 (Ultralytics-derived,
-    // copyleft — accepted for now; revisit before any closed-source distribution).
+    // export in eval/models/ (same pattern as the face model) if present; falls back
+    // to downloading from Hugging Face if missing. Single-class ("signature")
+    // Ultralytics detect head → SAME [1,5,N] layout decoded by SAME decodeYolo.
+    // LICENSE: AGPL-3.0 (Ultralytics-derived; accepted for now, revisit before release).
     // Source repo: tech4humans/yolov8s-signature-detector on Hugging Face.
     id: "yolo-signature",
     localSource: path.join(ROOT, "eval", "models", "sig-tech4humans.onnx"),
+    hfRepo: "tech4humans/yolov8s-signature-detector",
+    files: [["onnx/model.onnx", "model.onnx"]],
     destRel: "model.onnx", // → extension/models/yolo-signature/model.onnx
     sizeWarnMB: 50, // YOLOv8s fp32 ONNX ≈ 44.6 MB (larger than the nano models)
   },
@@ -211,20 +211,14 @@ async function run() {
       console.log(`• present  ${path.relative(ROOT, destPath)} (${hr(statSync(destPath).size)})`);
     } else if (CHECK_ONLY) {
       console.log(`✗ MISSING ${path.relative(ROOT, destPath)}`); failures++;
-    } else if (m.localSource) {
-      if (!existsSync(m.localSource)) {
-        console.log(`✗ ${m.id}: local source not found at ${path.relative(ROOT, m.localSource)}`);
-        console.log(`   export it first (in ml_env):  yolo export model=yolov8n-face.pt format=onnx imgsz=640 opset=12`);
-        failures++;
-      } else {
-        try {
-          mkdirSync(modelRoot, { recursive: true });
-          const buf = await readFile(m.localSource);
-          await writeFile(destPath, buf);
-          const warn = buf.length > m.sizeWarnMB * 1048576 ? "  (⚠ larger than expected)" : "";
-          console.log(`✓ ${m.id} ← ${path.relative(ROOT, m.localSource)} (${hr(buf.length)})${warn}`);
-        } catch (e) { console.log(`✗ ${m.id} copy failed: ${e.message}`); failures++; }
-      }
+    } else if (m.localSource && existsSync(m.localSource)) {
+      try {
+        mkdirSync(modelRoot, { recursive: true });
+        const buf = await readFile(m.localSource);
+        await writeFile(destPath, buf);
+        const warn = buf.length > m.sizeWarnMB * 1048576 ? "  (⚠ larger than expected)" : "";
+        console.log(`✓ ${m.id} ← ${path.relative(ROOT, m.localSource)} (${hr(buf.length)})${warn}`);
+      } catch (e) { console.log(`✗ ${m.id} copy failed: ${e.message}`); failures++; }
     } else if (m.files) {
       // Remote (HuggingFace) download. `hfRepo` overrides the local `id` as the repo path.
       try {
@@ -233,8 +227,12 @@ async function run() {
           const [repoPath, destRel] = Array.isArray(f) ? f : [f, f];
           total += await downloadTo(`https://huggingface.co/${m.hfRepo || m.id}/resolve/main/${repoPath}`, path.join(modelRoot, destRel));
         }
-        console.log(`✓ ${m.id} (${hr(total)})`);
+        console.log(`✓ ${m.id} (${hr(total)}) [downloaded from HF]`);
       } catch (e) { console.log(`✗ ${m.id} failed: ${e.message}`); failures++; }
+    } else if (m.localSource) {
+      console.log(`✗ ${m.id}: local source not found at ${path.relative(ROOT, m.localSource)}`);
+      console.log(`   export it first (in ml_env):  yolo export model=yolov8n-face.pt format=onnx imgsz=640 opset=12`);
+      failures++;
     }
     // integrity probe on whatever is on disk
     if (existsSync(destPath)) {
